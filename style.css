@@ -36,6 +36,10 @@ h2 {
   margin: 0 0 14px;
 }
 
+h3 {
+  margin: 0 0 10px;
+}
+
 form {
   display: grid;
   gap: 12px;
@@ -57,6 +61,10 @@ textarea {
   padding: 12px;
   font-size: 16px;
   background: white;
+}
+
+textarea {
+  resize: vertical;
 }
 
 fieldset {
@@ -98,6 +106,21 @@ button {
   cursor: pointer;
 }
 
+.secondary-btn {
+  background: #f2f2f2;
+  color: #1d1d1f;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.form-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
 .expense-item,
 .summary-item,
 .settlement-item {
@@ -121,8 +144,10 @@ button {
   margin-top: 4px;
 }
 
+.edit-btn,
 .delete-btn {
   margin-top: 8px;
+  margin-right: 8px;
   background: #f2f2f2;
   color: #1d1d1f;
   padding: 8px 12px;
@@ -141,30 +166,6 @@ button {
 
 .neutral {
   color: #6e6e73;
-}
-
-.form-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-.secondary-btn {
-  background: #f2f2f2;
-  color: #1d1d1f;
-}
-
-.hidden {
-  display: none;
-}
-
-.edit-btn {
-  margin-top: 8px;
-  margin-right: 8px;
-  background: #f2f2f2;
-  color: #1d1d1f;
-  padding: 8px 12px;
-  font-size: 13px;
 }
 
 .editing-notice {
@@ -218,4 +219,54 @@ button {
   grid-template-columns: 1fr 1fr;
   align-items: center;
   gap: 8px;
+}
+
+.hint {
+  margin: 8px 0 0;
+  color: #6e6e73;
+  font-size: 13px;
+}
+
+/* AI preview modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-card {
+  width: min(92vw, 560px);
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .app {
+    padding: 12px;
+  }
+
+  .header-card,
+  .card {
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  button {
+    padding: 12px;
+    font-size: 15px;
+  }
+
+  .rate-row {
+    grid-template-columns: 1fr;
+  }
 }
