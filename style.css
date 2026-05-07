@@ -142,3 +142,67 @@ button {
 .neutral {
   color: #6e6e73;
 }
+.form-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.secondary-btn {
+  background: #f2f2f2;
+  color: #1d1d1f;
+}
+
+.hidden {
+  display: none;
+}
+
+.edit-btn {
+  margin-top: 8px;
+  margin-right: 8px;
+  background: #f2f2f2;
+  color: #1d1d1f;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.editing-notice {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff4d6;
+  color: #5c4300;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+
+.member-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.member-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f2f2f2;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.member-chip button {
+  background: transparent;
+  color: #b42318;
+  border: 0;
+  padding: 0;
+  font-size: 12px;
+}
