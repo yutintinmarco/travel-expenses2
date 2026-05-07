@@ -3,9 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <title>Trip Expenses</title>
-
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -76,12 +74,37 @@
         </label>
 
         <div class="form-actions">
-  <button type="submit" id="submitBtn">新增</button>
-  <button type="button" id="cancelEditBtn" class="secondary-btn hidden">取消編輯</button>
-</div>
+          <button type="submit" id="submitBtn">新增</button>
+          <button type="button" id="cancelEditBtn" class="secondary-btn hidden">取消編輯</button>
+        </div>
       </form>
     </section>
 
+    <section class="card">
+      <h2>匯率設定（自定義）</h2>
+      <label>
+        結算基準幣別
+        <select id="baseCurrency">
+          <option value="HKD">HKD</option>
+          <option value="JPY">JPY</option>
+          <option value="CNY">CNY</option>
+          <option value="TWD">TWD</option>
+          <option value="KRW">KRW</option>
+          <option value="USD">USD</option>
+        </select>
+      </label>
+      <div id="ratesContainer" class="rates-grid"></div>
+      <button type="button" id="saveRatesBtn" class="secondary-btn">儲存匯率</button>
+    </section>
+
+    <section class="card">
+      <h2>OCR 入單</h2>
+      <label>
+        收據圖片
+        <input type="file" id="ocrReceiptInput" accept="image/*" />
+      </label>
+      <button type="button" id="ocrScanBtn" class="secondary-btn">掃描並自動填表</button>
+    </section>
 
     <section class="card">
       <h2>旅程設定 / Members</h2>
