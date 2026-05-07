@@ -227,7 +227,7 @@ button {
   font-size: 13px;
 }
 
-/* AI preview modal */
+/* OCR preview modal */
 .modal {
   position: fixed;
   inset: 0;
