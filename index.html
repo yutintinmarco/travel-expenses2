@@ -75,8 +75,23 @@
           <textarea id="note" rows="2" placeholder="Optional"></textarea>
         </label>
 
-        <button type="submit">新增</button>
+        <div class="form-actions">
+  <button type="submit" id="submitBtn">新增</button>
+  <button type="button" id="cancelEditBtn" class="secondary-btn hidden">取消編輯</button>
+</div>
       </form>
+    </section>
+
+
+    <section class="card">
+      <h2>旅程設定 / Members</h2>
+      <div class="member-controls">
+        <div id="memberList" class="member-list"></div>
+        <div class="member-add-row">
+          <input type="text" id="memberNameInput" placeholder="新增成員名稱" />
+          <button type="button" id="addMemberBtn" class="secondary-btn">新增成員</button>
+        </div>
+      </div>
     </section>
 
     <section class="card">
