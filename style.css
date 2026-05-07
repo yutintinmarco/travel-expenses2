@@ -142,6 +142,7 @@ button {
 .neutral {
   color: #6e6e73;
 }
+
 .form-actions {
   display: grid;
   grid-template-columns: 1fr;
@@ -175,7 +176,6 @@ button {
   margin-bottom: 12px;
 }
 
-
 .member-add-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -205,4 +205,17 @@ button {
   border: 0;
   padding: 0;
   font-size: 12px;
+}
+
+.rates-grid {
+  margin: 10px 0 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.rate-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 8px;
 }
