@@ -93,6 +93,7 @@
           <option value="USD">USD</option>
         </select>
       </label>
+
       <div id="ratesContainer" class="rates-grid"></div>
       <button type="button" id="saveRatesBtn" class="secondary-btn">儲存匯率</button>
     </section>
@@ -103,7 +104,8 @@
         收據圖片
         <input type="file" id="ocrReceiptInput" accept="image/*" />
       </label>
-      <button type="button" id="ocrScanBtn" class="secondary-btn">掃描並自動填表</button>
+      <button type="button" id="ocrScanBtn" class="secondary-btn">掃描並分析</button>
+      <p class="hint">流程：本地 OCR → AI 結構化分析 → 你確認後填入表單</p>
     </section>
 
     <section class="card">
@@ -127,6 +129,55 @@
       <div id="expenseList"></div>
     </section>
   </main>
+
+  <!-- AI 確認 Modal -->
+  <div id="ocrPreviewModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>確認收據資料</h3>
+
+      <label>
+        商戶
+        <input type="text" id="aiMerchantInput" />
+      </label>
+
+      <label>
+        日期
+        <input type="date" id="aiDateInput" />
+      </label>
+
+      <label>
+        幣別
+        <select id="aiCurrencyInput">
+          <option value="HKD">HKD</option>
+          <option value="JPY">JPY</option>
+          <option value="CNY">CNY</option>
+          <option value="TWD">TWD</option>
+          <option value="KRW">KRW</option>
+          <option value="USD">USD</option>
+        </select>
+      </label>
+
+      <label>
+        總額
+        <input type="number" id="aiTotalInput" step="0.01" min="0" />
+      </label>
+
+      <label>
+        信心值
+        <input type="text" id="aiConfidenceInput" readonly />
+      </label>
+
+      <label>
+        分析說明
+        <textarea id="aiReasonInput" rows="3" readonly></textarea>
+      </label>
+
+      <div class="form-actions">
+        <button type="button" id="confirmAiFillBtn">確認填入</button>
+        <button type="button" id="cancelAiFillBtn" class="secondary-btn">取消</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="app.js"></script>
 </body>
