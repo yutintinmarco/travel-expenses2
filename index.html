@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Trip Expenses</title>
+  <title>Trip Expenses (Free OCR)</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -11,7 +11,7 @@
   <main class="app">
     <section class="header-card">
       <p class="eyebrow">Travel Expense Module</p>
-      <h1>旅行支出記錄</h1>
+      <h1>旅行支出記錄（免費 OCR 版）</h1>
       <p id="syncStatus">Connecting...</p>
     </section>
 
@@ -99,13 +99,15 @@
     </section>
 
     <section class="card">
-      <h2>OCR 入單</h2>
+      <h2>OCR 入單（免費版）</h2>
       <label>
         收據圖片
         <input type="file" id="ocrReceiptInput" accept="image/*" />
       </label>
       <button type="button" id="ocrScanBtn" class="secondary-btn">掃描並分析</button>
-      <p class="hint">流程：本地 OCR → AI 結構化分析 → 你確認後填入表單</p>
+      <p class="hint">
+        本地 Tesseract OCR + 規則抽取（免費，無需 API key）
+      </p>
     </section>
 
     <section class="card">
@@ -130,7 +132,7 @@
     </section>
   </main>
 
-  <!-- AI 確認 Modal -->
+  <!-- OCR 結果確認 Modal -->
   <div id="ocrPreviewModal" class="modal hidden">
     <div class="modal-card">
       <h3>確認收據資料</h3>
@@ -168,7 +170,7 @@
       </label>
 
       <label>
-        分析說明
+        解析說明
         <textarea id="aiReasonInput" rows="3" readonly></textarea>
       </label>
 
