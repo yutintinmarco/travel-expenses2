@@ -58,7 +58,7 @@ const memberList = document.getElementById("memberList");
 const memberNameInput = document.getElementById("memberNameInput");
 const addMemberBtn = document.getElementById("addMemberBtn");
 
-// optional elements (若 index.html 未加都唔會爆)
+// optional elements
 const baseCurrencyInput = document.getElementById("baseCurrency");
 const ratesContainer = document.getElementById("ratesContainer");
 const saveRatesBtn = document.getElementById("saveRatesBtn");
@@ -183,7 +183,6 @@ function getRateFor(currency) {
   return Number.isFinite(Number(rate)) && Number(rate) > 0 ? Number(rate) : null;
 }
 
-// 將某幣別金額換算去 baseCurrency
 function convertToBase(amount, currency) {
   const rate = getRateFor(currency);
   if (!rate) return null;
@@ -366,11 +365,9 @@ async function saveExpense(event) {
   const payload = {
     date: dateInput.value,
     title: titleInput.value.trim(),
-    // 保留舊欄位相容
     amount: originalAmount,
     currency: originalCurrency,
 
-    // 新欄位：原幣 + 換算幣
     originalAmount,
     originalCurrency,
     convertedAmount,
@@ -522,11 +519,10 @@ function listenToExpenses() {
   });
 }
 
-/**
- * OCR 部分（Browser 原生 + Tesseract.js CDN）
- * - 用戶揀圖 -> 讀取圖片 -> OCR 文字
- * - 粗略抽日期 / 金額 / 幣別 / title
- */
+/* ===========================
+   OCR: 更準確版本
+   =========================== */
+
 async function ensureTesseract() {
   if (window.Tesseract) return;
   await new Promise((resolve, reject) => {
@@ -538,52 +534,254 @@ async function ensureTesseract() {
   });
 }
 
-function guessCurrencyFromText(text) {
+function normalizeOCRText(raw) {
+  return String(raw || "")
+    .replace(/[|]/g, "1")
+    .replace(/[Ｏ]/g, "0")
+    .replace(/[，]/g, ",")
+    .replace(/[：]/g, ":")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+function splitLines(text) {
+  return text
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean);
+}
+
+function parseMoneyFromLine(line) {
+  // 支援 1,234.56 / 1234.56 / 1234 / 1.234,56(簡化)
+  const cleaned = line.replace(/([A-Z]{3}|HK\$|NT\$|US\$|RMB|JPY|KRW|TWD|CNY|USD|HKD)/gi, " ");
+  const matches = [...cleaned.matchAll(/(?:\d{1,3}(?:[,\s]\d{3})+|\d+)(?:[.,]\d{2})?/g)];
+  const nums = matches
+    .map(m => m[0].replace(/\s/g, ""))
+    .map(token => {
+      // heuristic: 如果同時有 , 同 .，保留最後一個做小數點
+      if (token.includes(",") && token.includes(".")) {
+        const lastComma = token.lastIndexOf(",");
+        const lastDot = token.lastIndexOf(".");
+        const decimalSep = lastComma > lastDot ? "," : ".";
+        if (decimalSep === ",") {
+          token = token.replace(/\./g, "").replace(",", ".");
+        } else {
+          token = token.replace(/,/g, "");
+        }
+      } else if (token.includes(",") && !token.includes(".")) {
+        // 1,234 -> 千分位；12,34 -> 當小數
+        const parts = token.split(",");
+        if (parts.length === 2 && parts[1].length === 2) token = parts[0] + "." + parts[1];
+        else token = token.replace(/,/g, "");
+      }
+      return Number(token);
+    })
+    .filter(n => Number.isFinite(n) && n > 0);
+
+  if (!nums.length) return null;
+  return Math.max(...nums);
+}
+
+function detectCurrencyFromContext(text, fallback = "HKD") {
   const t = text.toUpperCase();
-  if (t.includes("HK$") || t.includes("HKD")) return "HKD";
-  if (t.includes("JPY") || t.includes("¥")) return "JPY";
-  if (t.includes("NT$") || t.includes("TWD")) return "TWD";
-  if (t.includes("CNY") || t.includes("RMB") || t.includes("¥")) return "CNY";
-  if (t.includes("KRW") || t.includes("₩")) return "KRW";
-  if (t.includes("USD") || t.includes("$")) return "USD";
-  return currencyInput.value || "HKD";
-}
 
-function extractDate(text) {
-  // 支援 yyyy-mm-dd / yyyy/mm/dd / dd-mm-yyyy
-  const m1 = text.match(/\b(20\d{2})[\/\-\.](0?\d|1[0-2])[\/\-\.](0?\d|[12]\d|3[01])\b/);
-  if (m1) {
-    const y = m1[1];
-    const mo = String(m1[2]).padStart(2, "0");
-    const d = String(m1[3]).padStart(2, "0");
-    return `${y}-${mo}-${d}`;
+  // 強詞
+  if (/\bHKD\b|HK\$/.test(t)) return "HKD";
+  if (/\bUSD\b|US\$/.test(t)) return "USD";
+  if (/\bTWD\b|NT\$/.test(t)) return "TWD";
+  if (/\bCNY\b|\bRMB\b/.test(t)) return "CNY";
+  if (/\bJPY\b/.test(t)) return "JPY";
+  if (/\bKRW\b/.test(t)) return "KRW";
+
+  // 弱詞（¥ 可能係 CNY/JPY）
+  if (t.includes("₩")) return "KRW";
+  if (t.includes("¥")) {
+    if (/TOKYO|OSAKA|JAPAN|JP\b/.test(t)) return "JPY";
+    if (/SHENZHEN|GUANGZHOU|BEIJING|CHINA|CN\b/.test(t)) return "CNY";
+    return fallback;
+  }
+  if (t.includes("$")) {
+    // 如果有 HK 傾向 HKD
+    if (t.includes("HK")) return "HKD";
+    if (t.includes("US")) return "USD";
+    if (t.includes("NT")) return "TWD";
+    return fallback;
   }
 
-  const m2 = text.match(/\b(0?\d|[12]\d|3[01])[\/\-\.](0?\d|1[0-2])[\/\-\.](20\d{2})\b/);
-  if (m2) {
-    const d = String(m2[1]).padStart(2, "0");
-    const mo = String(m2[2]).padStart(2, "0");
-    const y = m2[3];
-    return `${y}-${mo}-${d}`;
+  return fallback;
+}
+
+function extractDateAdvanced(lines) {
+  const joined = lines.join(" ");
+  const patterns = [
+    /\b(20\d{2})[\/\-.](0?\d|1[0-2])[\/\-.](0?\d|[12]\d|3[01])\b/g, // yyyy-mm-dd
+    /\b(0?\d|[12]\d|3[01])[\/\-.](0?\d|1[0-2])[\/\-.](20\d{2})\b/g, // dd-mm-yyyy
+    /\b(0?\d|1[0-2])[\/\-.](0?\d|[12]\d|3[01])[\/\-.](20\d{2})\b/g  // mm-dd-yyyy
+  ];
+
+  const candidates = [];
+
+  for (const p of patterns) {
+    let m;
+    while ((m = p.exec(joined)) !== null) {
+      let y, mo, d;
+      if (m[1].startsWith("20")) {
+        y = m[1]; mo = m[2]; d = m[3];
+      } else if (m[3].startsWith("20")) {
+        // dd-mm-yyyy 或 mm-dd-yyyy 兩者都推，稍後驗證
+        const a = Number(m[1]);
+        const b = Number(m[2]);
+        y = m[3];
+
+        // 優先 dd-mm-yyyy（亞洲單據較常見）
+        if (a > 12 && b <= 12) { d = a; mo = b; }
+        else if (b > 12 && a <= 12) { d = b; mo = a; }
+        else { d = a; mo = b; } // 模糊時假設 dd-mm
+      }
+
+      const dt = new Date(`${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}T00:00:00Z`);
+      if (!Number.isNaN(dt.getTime())) {
+        const ymd = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        // 過濾離譜年份
+        if (Number(y) >= 2010 && Number(y) <= 2100) candidates.push(ymd);
+      }
+    }
   }
 
-  return null;
+  // 揀最接近今天但唔係未來太遠
+  if (!candidates.length) return null;
+  const today = new Date();
+  const scored = candidates.map(c => {
+    const dt = new Date(`${c}T00:00:00`);
+    const diff = Math.abs(today.getTime() - dt.getTime());
+    return { c, score: diff };
+  });
+  scored.sort((a, b) => a.score - b.score);
+  return scored[0].c;
 }
 
-function extractAmount(text) {
-  // 抓最大似 total 數字
-  const candidates = [...text.matchAll(/(?:TOTAL|AMOUNT|合計|總計|應付)?\s*[:：]?\s*([0-9]+(?:[.,][0-9]{1,2})?)/gi)]
-    .map(m => Number(String(m[1]).replace(",", ".")))
-    .filter(n => Number.isFinite(n));
+function scoreAmountLine(line) {
+  const upper = line.toUpperCase();
 
-  if (candidates.length === 0) return null;
-  return Math.max(...candidates);
+  let score = 0;
+  if (/TOTAL|GRAND TOTAL|AMOUNT DUE|BALANCE DUE|PAYABLE|應付|合計|總計|實付|付款金額/.test(upper)) score += 80;
+  if (/SUBTOTAL|SUB-TOTAL|小計/.test(upper)) score += 30;
+  if (/TAX|VAT|GST|SERVICE|服務費|折扣|DISCOUNT|CHANGE|找續/.test(upper)) score -= 35;
+  if (/[A-Z]{3}|HK\$|NT\$|US\$|RMB|JPY|KRW|TWD|CNY|USD|HKD|¥|\$|₩/.test(upper)) score += 10;
+  if (/\b\d+(?:[.,]\d{2})\b/.test(upper)) score += 10;
+
+  // 太短/太長減分
+  if (line.length < 4) score -= 10;
+  if (line.length > 60) score -= 5;
+
+  const amount = parseMoneyFromLine(line);
+  if (amount !== null) {
+    if (amount < 0.5) score -= 15;
+    if (amount > 1000000) score -= 30;
+  } else {
+    score -= 40;
+  }
+
+  return { score, amount };
 }
 
-function extractTitle(text) {
-  const lines = text.split("\n").map(s => s.trim()).filter(Boolean);
-  if (lines.length === 0) return "Receipt";
-  return lines[0].slice(0, 60);
+function extractTotalAmountAdvanced(lines) {
+  const candidates = [];
+
+  lines.forEach((line, idx) => {
+    const { score, amount } = scoreAmountLine(line);
+    if (amount !== null) {
+      candidates.push({
+        line,
+        idx,
+        amount,
+        score
+      });
+    }
+  });
+
+  if (!candidates.length) return null;
+
+  // 如果有高分 total 行，直接揀最高分
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    // 同分時偏好較後出現（單據 total 常喺底部）
+    return b.idx - a.idx;
+  });
+
+  // 防止揀到 tax/discount：如果第一名包含強烈負面詞，而第二名接近，揀第二名
+  const first = candidates[0];
+  const second = candidates[1];
+  if (
+    second &&
+    /TAX|GST|VAT|SERVICE|DISCOUNT|CHANGE|找續|折扣/.test(first.line.toUpperCase()) &&
+    second.score >= first.score - 8
+  ) {
+    return second.amount;
+  }
+
+  return first.amount;
+}
+
+function extractTitleAdvanced(lines) {
+  // 忽略太像地址/電話/日期/編碼行
+  const blacklist = /TEL|電話|FAX|NO\.|INVOICE|RECEIPT|日期|DATE|TIME|CASHIER|TABLE|ORDER|THANK|WELCOME|WWW|HTTP|@/i;
+
+  const candidates = lines
+    .slice(0, 8)
+    .map(line => line.trim())
+    .filter(line => line.length >= 3 && line.length <= 48)
+    .filter(line => !blacklist.test(line))
+    .filter(line => parseMoneyFromLine(line) === null);
+
+  if (candidates.length) return candidates[0];
+  return lines[0]?.slice(0, 60) || "Receipt";
+}
+
+function buildOCRDebugNote(parsed, topLines) {
+  return [
+    `OCR:auto-filled`,
+    `ocr_amount=${parsed.amount ?? "n/a"}`,
+    `ocr_currency=${parsed.currency ?? "n/a"}`,
+    `ocr_date=${parsed.date ?? "n/a"}`,
+    `ocr_line=${(parsed.amountLine || "").slice(0, 40)}`,
+    `ocr_preview=${topLines.slice(0, 3).join(" / ").slice(0, 120)}`
+  ].join(" | ");
+}
+
+function parseReceiptTextAdvanced(rawText, currentCurrency) {
+  const normalized = normalizeOCRText(rawText);
+  const lines = splitLines(normalized);
+
+  const date = extractDateAdvanced(lines);
+  const currency = detectCurrencyFromContext(normalized, currentCurrency);
+
+  // amount + 來源行
+  const amountCandidates = lines.map((line, idx) => {
+    const { score, amount } = scoreAmountLine(line);
+    return { line, idx, score, amount };
+  }).filter(x => x.amount !== null);
+
+  let amount = extractTotalAmountAdvanced(lines);
+  let amountLine = "";
+  if (amount !== null && amountCandidates.length) {
+    const best = amountCandidates
+      .filter(x => x.amount === amount)
+      .sort((a, b) => b.score - a.score || b.idx - a.idx)[0];
+    amountLine = best?.line || "";
+  }
+
+  const title = extractTitleAdvanced(lines);
+
+  return {
+    date,
+    amount,
+    currency,
+    title,
+    amountLine,
+    topLines: lines
+  };
 }
 
 async function runReceiptOCR() {
@@ -596,19 +794,23 @@ async function runReceiptOCR() {
     await ensureTesseract();
 
     const { data } = await window.Tesseract.recognize(file, "eng+chi_tra");
-    const text = data?.text || "";
+    const rawText = data?.text || "";
 
-    const guessedDate = extractDate(text);
-    const guessedAmount = extractAmount(text);
-    const guessedCurrency = guessCurrencyFromText(text);
-    const guessedTitle = extractTitle(text);
+    const parsed = parseReceiptTextAdvanced(rawText, currencyInput.value || "HKD");
 
-    if (guessedDate) dateInput.value = guessedDate;
-    if (guessedAmount) amountInput.value = String(guessedAmount);
-    if (guessedCurrency) currencyInput.value = guessedCurrency;
-    if (!titleInput.value.trim()) titleInput.value = guessedTitle;
+    if (parsed.date) dateInput.value = parsed.date;
+    if (parsed.amount !== null) amountInput.value = String(parsed.amount);
+    if (parsed.currency) currencyInput.value = parsed.currency;
+    if (!titleInput.value.trim()) titleInput.value = parsed.title;
 
-    noteInput.value = [noteInput.value.trim(), "OCR:auto-filled"].filter(Boolean).join(" | ");
+    const debugNote = buildOCRDebugNote(parsed, parsed.topLines || []);
+    noteInput.value = [noteInput.value.trim(), debugNote].filter(Boolean).join(" | ");
+
+    // 如果抽不到 amount，提示手動修正
+    if (parsed.amount === null) {
+      alert("OCR 已完成，但抓唔到總金額，請手動輸入金額。");
+    }
+
     syncStatus.textContent = `OCR done (${tripId})`;
   } catch (error) {
     console.error(error);
