@@ -1,0 +1,144 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f5f7;
+  color: #1d1d1f;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 18px;
+  padding-bottom: 48px;
+}
+
+.header-card,
+.card {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 22px;
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #6e6e73;
+}
+
+h1,
+h2 {
+  margin: 0 0 14px;
+}
+
+form {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid #d2d2d7;
+  border-radius: 14px;
+  padding: 12px;
+  font-size: 16px;
+  background: white;
+}
+
+fieldset {
+  border: 1px solid #d2d2d7;
+  border-radius: 16px;
+  padding: 12px;
+}
+
+legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.checkbox-item input {
+  width: auto;
+}
+
+button {
+  border: 0;
+  border-radius: 16px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  background: #1d1d1f;
+  color: white;
+  cursor: pointer;
+}
+
+.expense-item,
+.summary-item,
+.settlement-item {
+  border-bottom: 1px solid #eeeeee;
+  padding: 12px 0;
+}
+
+.expense-item:last-child,
+.summary-item:last-child,
+.settlement-item:last-child {
+  border-bottom: 0;
+}
+
+.expense-title {
+  font-weight: 700;
+}
+
+.expense-meta {
+  color: #6e6e73;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.delete-btn {
+  margin-top: 8px;
+  background: #f2f2f2;
+  color: #1d1d1f;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.positive {
+  color: #0a7a2f;
+  font-weight: 700;
+}
+
+.negative {
+  color: #b42318;
+  font-weight: 700;
+}
+
+.neutral {
+  color: #6e6e73;
+}

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Trip Expenses</title>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <main class="app">
+    <section class="header-card">
+      <p class="eyebrow">Travel Expense Module</p>
+      <h1>旅行支出記錄</h1>
+      <p id="syncStatus">Connecting...</p>
+    </section>
+
+    <section class="card">
+      <h2>新增支出</h2>
+
+      <form id="expenseForm">
+        <label>
+          日期
+          <input type="date" id="date" required />
+        </label>
+
+        <label>
+          項目
+          <input type="text" id="title" placeholder="例如：Lunch / Taxi" required />
+        </label>
+
+        <label>
+          金額
+          <input type="number" id="amount" step="0.01" min="0" required />
+        </label>
+
+        <label>
+          貨幣
+          <select id="currency">
+            <option value="HKD">HKD</option>
+            <option value="JPY">JPY</option>
+            <option value="CNY">CNY</option>
+            <option value="TWD">TWD</option>
+            <option value="KRW">KRW</option>
+            <option value="USD">USD</option>
+          </select>
+        </label>
+
+        <label>
+          付款人
+          <select id="paidBy"></select>
+        </label>
+
+        <fieldset>
+          <legend>參與人</legend>
+          <div id="sharedByGroup" class="checkbox-grid"></div>
+        </fieldset>
+
+        <label>
+          分類
+          <select id="category">
+            <option value="Food">Food</option>
+            <option value="Transport">Transport</option>
+            <option value="Hotel">Hotel</option>
+            <option value="Shopping">Shopping</option>
+            <option value="Ticket">Ticket</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+
+        <label>
+          備註
+          <textarea id="note" rows="2" placeholder="Optional"></textarea>
+        </label>
+
+        <button type="submit">新增</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>結算 Summary</h2>
+      <div id="summary"></div>
+    </section>
+
+    <section class="card">
+      <h2>支出列表</h2>
+      <div id="expenseList"></div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
