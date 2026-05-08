@@ -266,6 +266,7 @@ button {
   gap: 10px;
 }
 
+
 .admin-badge {
   display: inline-block;
   font-size: 11px;
@@ -296,6 +297,66 @@ button {
   }
 
   .rate-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+.summary-header-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.export-btn {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.settlement-status {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.settlement-actions {
+  margin-top: 8px;
+}
+
+.settle-btn {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 12px;
+}
+
+.paid-badge,
+.unpaid-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.paid-badge {
+  background: #e7f6ec;
+  color: #0a7a2f;
+}
+
+.unpaid-badge {
+  background: #fff4d6;
+  color: #5c4300;
+}
+
+.paid-history-item {
+  background: rgba(10, 122, 47, 0.04);
+  border-radius: 14px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+@media (max-width: 480px) {
+  .summary-header-row {
     grid-template-columns: 1fr;
   }
 }
