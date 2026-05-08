@@ -360,3 +360,45 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* partial settlement input */
+.settlement-progress {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #6e6e73;
+}
+
+.settlement-payment-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settlement-payment-row input {
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 12px;
+}
+
+.partial-badge {
+  display: inline-block;
+  margin-top: 6px;
+  background: #fff4d6;
+  color: #5c4300;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .settlement-payment-row {
+    grid-template-columns: 1fr;
+  }
+}
