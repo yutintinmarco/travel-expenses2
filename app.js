@@ -83,13 +83,27 @@ const allowedEmailInput = document.getElementById("allowedEmailInput");
 const addAllowedEmailBtn = document.getElementById("addAllowedEmailBtn");
 const exportExcelBtn = document.getElementById("exportExcelBtn");
 
+const tripControlPanel = document.getElementById("tripControlPanel");
+const tripStatusText = document.getElementById("tripStatusText");
+const lockTripBtn = document.getElementById("lockTripBtn");
+const unlockTripBtn = document.getElementById("unlockTripBtn");
+const deletedExpenseList = document.getElementById("deletedExpenseList");
+const activityLogList = document.getElementById("activityLogList");
+
 let currentUser = null;
+let allExpenses = [];
 let expenses = [];
 let settlements = [];
+let activityLogs = [];
+let tripStatus = "open";
+let tripLockedAt = null;
+let tripLockedBy = null;
+let tripLockedByName = "";
 let editingExpenseId = null;
 let stopTripListener = null;
 let stopExpensesListener = null;
 let stopSettlementsListener = null;
+let stopActivityLogsListener = null;
 let tripAllowedUids = [];
 let tripCreatorUid = null;
 let allowedEmailsCache = [];
@@ -102,6 +116,7 @@ const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const getTripDocRef = () => doc(db, "trips", tripId);
 const getExpensesCollection = () => collection(db, "trips", tripId, "expenses");
 const getSettlementsCollection = () => collection(db, "trips", tripId, "settlements");
+const getActivityLogsCollection = () => collection(db, "trips", tripId, "activityLogs");
 const uniqueStrings = (arr) => [...new Set((arr || []).filter(Boolean).map(v => String(v)))];
 const normalizeEmail = (e) => String(e || "").trim().toLowerCase();
 
@@ -109,6 +124,92 @@ function getCurrentUserDisplayName() {
   if (!currentUser) return "未知用戶";
   return currentUser.displayName || currentUser.email || currentUser.uid.slice(0, 7) + "…";
 }
+
+function isTripLocked() {
+  return tripStatus === "locked";
+}
+
+function assertTripOpen(message = "此旅程已鎖定，不能再修改支出或設定。") {
+  if (isTripLocked()) {
+    alert(message);
+    return false;
+  }
+  return true;
+}
+
+function getActiveExpenses() {
+  return allExpenses.filter(expense => expense.isDeleted !== true);
+}
+
+function getDeletedExpenses() {
+  return allExpenses.filter(expense => expense.isDeleted === true);
+}
+
+function setFormDisabled(disabled) {
+  Array.from(form.elements).forEach(el => {
+    el.disabled = disabled;
+  });
+  if (disabled) {
+    submitBtn.textContent = "旅程已鎖定";
+    cancelEditBtn.classList.add("hidden");
+  } else if (!editingExpenseId) {
+    submitBtn.textContent = "新增";
+  }
+}
+
+function updateTripStatusUi() {
+  const locked = isTripLocked();
+  const lockInfo = locked
+    ? `已鎖定${tripLockedByName ? ` · ${tripLockedByName}` : ""}${tripLockedAt ? ` · ${formatTimestamp(tripLockedAt)}` : ""}`
+    : "Open，仍可新增及修改支出";
+
+  if (tripStatusText) {
+    tripStatusText.innerHTML = locked
+      ? `<span class="locked-badge">Locked</span> ${safeEscape(lockInfo)}`
+      : `<span class="open-badge">Open</span> ${safeEscape(lockInfo)}`;
+  }
+
+  if (tripControlPanel) {
+    tripControlPanel.classList.toggle("hidden", !isAdmin());
+  }
+
+  if (lockTripBtn) lockTripBtn.classList.toggle("hidden", locked || !isAdmin());
+  if (unlockTripBtn) unlockTripBtn.classList.toggle("hidden", !locked || !isAdmin());
+
+  setFormDisabled(locked);
+
+  if (addMemberBtn) addMemberBtn.disabled = locked;
+  if (memberNameInput) memberNameInput.disabled = locked;
+  if (saveRatesBtn) saveRatesBtn.disabled = locked;
+  if (baseCurrencyInput) baseCurrencyInput.disabled = locked;
+  if (ratesContainer) {
+    ratesContainer.querySelectorAll("input").forEach(input => {
+      input.disabled = locked || input.dataset.rateCode === tripSettings.baseCurrency;
+    });
+  }
+  if (ocrBtn) ocrBtn.disabled = locked;
+  if (ocrFileInput) ocrFileInput.disabled = locked;
+}
+
+async function logActivity(action, message, targetType = "trip", targetId = tripId, details = {}) {
+  if (!currentUser) return;
+
+  try {
+    await addDoc(getActivityLogsCollection(), {
+      action,
+      message,
+      actorUid: currentUser.uid,
+      actorName: getCurrentUserDisplayName(),
+      targetType,
+      targetId: String(targetId || ""),
+      details,
+      createdAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.warn("Activity log failed:", error);
+  }
+}
+
 
 function getSettlementKey(item) {
   return `${item.from}|${item.to}|${item.currency}|${Number(item.amount).toFixed(2)}`;
@@ -246,6 +347,7 @@ function renderRateEditor() {
 }
 
 async function saveTripSettings() {
+  if (!assertTripOpen()) return;
   const newBase = baseCurrencyInput.value;
   const nextRates = {};
   ratesContainer.querySelectorAll("[data-rate-code]").forEach(input => {
@@ -259,7 +361,8 @@ async function saveTripSettings() {
 
   await setDoc(getTripDocRef(), { settings: tripSettings }, { merge: true });
   alert("匯率設定已儲存。");
-  renderRateEditor(); renderSummary(); renderExpenses();
+  await logActivity("settings_updated", `修改匯率設定，基準貨幣為 ${newBase}`, "trip", tripId, { baseCurrency: newBase });
+  renderRateEditor(); updateTripStatusUi(); renderSummary(); renderExpenses();
 }
 
 async function ensureTripMembersAndSettings() {
@@ -279,7 +382,8 @@ async function ensureTripMembersAndSettings() {
       allowedEmails: allowedEmailsCache,
       settings: tripSettings,
       createdAt: serverTimestamp(),
-      createdBy: currentUser.uid
+      createdBy: currentUser.uid,
+      status: "open"
     }, { merge: true });
     return;
   }
@@ -296,6 +400,10 @@ async function ensureTripMembersAndSettings() {
   const uidAllowed = tripAllowedUids.includes(currentUser.uid);
   const emailAllowed = !!myEmail && allowedEmails.includes(myEmail);
   const isCreator = data.createdBy === currentUser.uid;
+
+  if (!data.status && isCreator) {
+    await setDoc(tripRef, { status: "open" }, { merge: true });
+  }
 
   // 自動 claim：email 已白名單 or 係 trip 創建者 -> 自動加 uid
   if (!uidAllowed && (emailAllowed || isCreator)) {
@@ -332,6 +440,12 @@ function startTripListener() {
     if (!snap.exists()) return;
     const data = snap.data();
 
+    tripStatus = data.status === "locked" ? "locked" : "open";
+    tripLockedAt = data.lockedAt || null;
+    tripLockedBy = data.lockedBy || null;
+    tripLockedByName = data.lockedByName || "";
+    updateTripStatusUi();
+
     if (Array.isArray(data.members) && data.members.length > 0) {
       const changed = JSON.stringify(data.members) !== JSON.stringify(members);
       if (changed) {
@@ -347,6 +461,7 @@ function startTripListener() {
     if (Array.isArray(data.allowedEmails)) {
       allowedEmailsCache = data.allowedEmails.map(normalizeEmail).filter(Boolean);
       renderAllowedEmails();
+      updateTripStatusUi();
     }
 
     if (data.settings) {
@@ -355,7 +470,7 @@ function startTripListener() {
         ...data.settings,
         exchangeRates: { ...tripSettings.exchangeRates, ...(data.settings.exchangeRates || {}) }
       };
-      renderRateEditor(); renderSummary(); renderExpenses();
+      renderRateEditor(); updateTripStatusUi(); renderSummary(); renderExpenses();
     }
   }, err => {
     console.error(err);
@@ -370,8 +485,11 @@ function listenToExpenses() {
   if (stopExpensesListener) stopExpensesListener();
   const q = query(getExpensesCollection(), orderBy("date", "desc"));
   stopExpensesListener = onSnapshot(q, snap => {
-    expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderExpenses(); renderSummary();
+    allExpenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    expenses = getActiveExpenses();
+    renderExpenses();
+    renderDeletedExpenses();
+    renderSummary();
     syncStatus.textContent = `Synced (${tripId})`;
   }, err => {
     console.error(err);
@@ -381,6 +499,7 @@ function listenToExpenses() {
 
 function listenToSettlements() {
   if (stopSettlementsListener) stopSettlementsListener();
+    if (stopActivityLogsListener) stopActivityLogsListener();
   const q = query(getSettlementsCollection(), orderBy("paidAt", "desc"));
   stopSettlementsListener = onSnapshot(q, snap => {
     settlements = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -390,6 +509,19 @@ function listenToSettlements() {
     syncStatus.textContent = err?.code === "permission-denied" ? "No access to settlements" : "Settlement sync error";
   });
 }
+
+function listenToActivityLogs() {
+  if (stopActivityLogsListener) stopActivityLogsListener();
+  const q = query(getActivityLogsCollection(), orderBy("createdAt", "desc"));
+  stopActivityLogsListener = onSnapshot(q, snap => {
+    activityLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderActivityLogs();
+  }, err => {
+    console.error(err);
+    syncStatus.textContent = err?.code === "permission-denied" ? "No access to activity logs" : "Activity log sync error";
+  });
+}
+
 
 function resetExpenseForm() {
   form.reset(); setToday();
@@ -401,6 +533,7 @@ function resetExpenseForm() {
 }
 
 function enterEditMode(expenseId) {
+  if (!assertTripOpen()) return;
   const expense = expenses.find(item => item.id === expenseId);
   if (!expense) return alert("搵唔到呢筆支出。");
   editingExpenseId = expense.id;
@@ -430,6 +563,7 @@ function enterEditMode(expenseId) {
 async function saveExpense(event) {
   event.preventDefault();
   if (!currentUser) return alert("請先登入。");
+  if (!assertTripOpen()) return;
 
   const participants = getSelectedParticipants();
   if (participants.length === 0) return alert("請至少選擇一位參與人。");
@@ -466,12 +600,23 @@ async function saveExpense(event) {
 
   if (editingExpenseId) {
     await updateDoc(doc(db, "trips", tripId, "expenses", editingExpenseId), payload);
+    await logActivity("expense_updated", `${displayName} 修改 ${payload.title} ${payload.originalCurrency} ${payload.originalAmount.toFixed(2)}`, "expense", editingExpenseId, {
+      title: payload.title,
+      amount: payload.originalAmount,
+      currency: payload.originalCurrency
+    });
   } else {
-    await addDoc(getExpensesCollection(), {
+    const docRef = await addDoc(getExpensesCollection(), {
       ...payload,
+      isDeleted: false,
       createdBy: currentUser.uid,
       createdByName: displayName,
       createdAt: serverTimestamp()
+    });
+    await logActivity("expense_created", `${displayName} 新增 ${payload.title} ${payload.originalCurrency} ${payload.originalAmount.toFixed(2)}`, "expense", docRef.id, {
+      title: payload.title,
+      amount: payload.originalAmount,
+      currency: payload.originalCurrency
     });
   }
 
@@ -479,27 +624,74 @@ async function saveExpense(event) {
 }
 
 async function removeExpense(expenseId) {
-  if (!confirm("確定刪除？")) return;
+  if (!assertTripOpen()) return;
+
+  const expense = expenses.find(item => item.id === expenseId);
+  const title = expense?.title || "支出";
+
+  if (!confirm(`確定刪除「${title}」？資料會保留在 Deleted Items，可供審計追蹤。`)) return;
+
   if (editingExpenseId === expenseId) resetExpenseForm();
-  await deleteDoc(doc(db, "trips", tripId, "expenses", expenseId));
+
+  await updateDoc(doc(db, "trips", tripId, "expenses", expenseId), {
+    isDeleted: true,
+    deletedAt: serverTimestamp(),
+    deletedBy: currentUser.uid,
+    deletedByName: getCurrentUserDisplayName(),
+    updatedBy: currentUser.uid,
+    updatedByName: getCurrentUserDisplayName(),
+    updatedAt: serverTimestamp()
+  });
+
+  await logActivity("expense_deleted", `${getCurrentUserDisplayName()} 刪除 ${title}`, "expense", expenseId, {
+    title,
+    softDelete: true
+  });
+}
+
+async function restoreExpense(expenseId) {
+  if (!assertTripOpen()) return;
+
+  const expense = allExpenses.find(item => item.id === expenseId);
+  const title = expense?.title || "支出";
+
+  if (!confirm(`還原「${title}」？`)) return;
+
+  await updateDoc(doc(db, "trips", tripId, "expenses", expenseId), {
+    isDeleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    deletedByName: "",
+    updatedBy: currentUser.uid,
+    updatedByName: getCurrentUserDisplayName(),
+    updatedAt: serverTimestamp()
+  });
+
+  await logActivity("expense_restored", `${getCurrentUserDisplayName()} 還原 ${title}`, "expense", expenseId, {
+    title
+  });
 }
 
 async function addMember() {
+  if (!assertTripOpen()) return;
   const name = memberNameInput.value.trim();
   if (!name) return alert("請輸入成員名稱。");
   if (members.some(m => m.toLowerCase() === name.toLowerCase())) return alert("成員名稱已存在。");
   const next = [...members, name];
   await setDoc(getTripDocRef(), { members: next }, { merge: true });
   members = next; initMembers(); memberNameInput.value = "";
+  await logActivity("member_added", `${getCurrentUserDisplayName()} 新增成員 ${name}`, "member", name, { member: name });
 }
 
 async function removeMember(name) {
+  if (!assertTripOpen()) return;
   if (members.length <= 1) return alert("至少要保留一位成員。");
   const used = expenses.some(e => e.paidBy === name || (Array.isArray(e.sharedBy) && e.sharedBy.includes(name)));
   if (used) return alert("此成員已出現在歷史支出，不能移除。");
   const next = members.filter(m => m !== name);
   await setDoc(getTripDocRef(), { members: next }, { merge: true });
   members = next; initMembers();
+  await logActivity("member_removed", `${getCurrentUserDisplayName()} 移除成員 ${name}`, "member", name, { member: name });
 }
 
 function formatAuditUid(uid) {
@@ -536,8 +728,8 @@ function renderExpenses() {
           <div>建立：${safeEscape(createdName)} · ${formatTimestamp(expense.createdAt)}</div>
           <div>更新：${safeEscape(updatedName)} · ${formatTimestamp(expense.updatedAt)}</div>
         </div>
-        <button class="edit-btn" data-edit-id="${safeEscape(expense.id)}">Edit</button>
-        <button class="delete-btn" data-delete-id="${safeEscape(expense.id)}">Delete</button>
+        <button class="edit-btn" data-edit-id="${safeEscape(expense.id)}" ${isTripLocked() ? "disabled" : ""}>Edit</button>
+        <button class="delete-btn" data-delete-id="${safeEscape(expense.id)}" ${isTripLocked() ? "disabled" : ""}>Delete</button>
       </div>
     `;
   }).join("");
@@ -545,6 +737,39 @@ function renderExpenses() {
   expenseList.querySelectorAll("[data-edit-id]").forEach(btn => btn.addEventListener("click", () => enterEditMode(btn.dataset.editId)));
   expenseList.querySelectorAll("[data-delete-id]").forEach(btn => btn.addEventListener("click", () => removeExpense(btn.dataset.deleteId)));
 }
+
+function renderDeletedExpenses() {
+  if (!deletedExpenseList) return;
+
+  const deleted = getDeletedExpenses();
+
+  if (!deleted.length) {
+    deletedExpenseList.innerHTML = `<p class="neutral">暫時未有已刪除支出。</p>`;
+    return;
+  }
+
+  const base = tripSettings.baseCurrency;
+
+  deletedExpenseList.innerHTML = deleted.map(expense => {
+    const oAmt = Number(expense.originalAmount ?? expense.amount ?? 0);
+    const oCur = expense.originalCurrency ?? expense.currency ?? base;
+    return `
+      <div class="expense-item deleted-item">
+        <div class="expense-title">${safeEscape(expense.title)} · ${safeEscape(oCur)} ${oAmt.toFixed(2)}</div>
+        <div class="expense-meta">${safeEscape(expense.date)} · Paid by ${safeEscape(expense.paidBy || "")}</div>
+        <div class="expense-audit">
+          <div>刪除：${safeEscape(expense.deletedByName || formatAuditUid(expense.deletedBy))} · ${formatTimestamp(expense.deletedAt)}</div>
+        </div>
+        <button class="edit-btn" data-restore-id="${safeEscape(expense.id)}" ${isTripLocked() ? "disabled" : ""}>還原</button>
+      </div>
+    `;
+  }).join("");
+
+  deletedExpenseList.querySelectorAll("[data-restore-id]").forEach(btn => {
+    btn.addEventListener("click", () => restoreExpense(btn.dataset.restoreId));
+  });
+}
+
 
 function buildSettlement(net) {
   const debtors = [], creditors = [];
@@ -730,7 +955,7 @@ async function recordSettlementPayment(item) {
 
   const note = prompt("備註，例如 FPS / Cash / Alipay，可留空：", "") || "";
 
-  await addDoc(getSettlementsCollection(), {
+  const docRef = await addDoc(getSettlementsCollection(), {
     settlementKey: item.settlementKey,
     settlementPairKey: item.settlementPairKey,
     from: item.from,
@@ -746,11 +971,25 @@ async function recordSettlementPayment(item) {
     markedByName: getCurrentUserDisplayName(),
     paidAt: serverTimestamp()
   });
+
+  await logActivity("settlement_recorded", `${getCurrentUserDisplayName()} 記錄 ${item.from} paid ${item.to} ${item.currency} ${paidAmount.toFixed(2)}`, "settlement", docRef.id, {
+    from: item.from,
+    to: item.to,
+    paidAmount,
+    currency: item.currency
+  });
 }
 
 async function cancelSettlementPaid(settlementId) {
   if (!confirm("取消此已找數標記？")) return;
+  const record = settlements.find(item => item.id === settlementId);
   await deleteDoc(doc(db, "trips", tripId, "settlements", settlementId));
+  await logActivity("settlement_cancelled", `${getCurrentUserDisplayName()} 取消找數紀錄 ${record?.from || ""} paid ${record?.to || ""}`, "settlement", settlementId, {
+    from: record?.from || "",
+    to: record?.to || "",
+    paidAmount: Number(record?.paidAmount ?? record?.amount ?? 0),
+    currency: record?.currency || ""
+  });
 }
 
 async function ensureSheetJs() {
@@ -767,7 +1006,7 @@ async function ensureSheetJs() {
 function exportWorkbook() {
   const { expenseNet, net, settlement, currency, recordedPaymentsTotal } = calculateSummary();
 
-  const expensesRows = expenses.map(expense => ({
+  const expensesRows = allExpenses.map(expense => ({
     Date: expense.date || "",
     Item: expense.title || "",
     Category: expense.category || "",
@@ -782,7 +1021,10 @@ function exportWorkbook() {
     CreatedBy: expense.createdByName || formatAuditUid(expense.createdBy),
     CreatedAt: formatTimestamp(expense.createdAt),
     UpdatedBy: expense.updatedByName || formatAuditUid(expense.updatedBy),
-    UpdatedAt: formatTimestamp(expense.updatedAt)
+    UpdatedAt: formatTimestamp(expense.updatedAt),
+    IsDeleted: expense.isDeleted === true ? "Yes" : "No",
+    DeletedBy: expense.deletedByName || formatAuditUid(expense.deletedBy),
+    DeletedAt: formatTimestamp(expense.deletedAt)
   }));
 
   const summaryRows = Object.entries(net).map(([person, amount]) => {
@@ -833,11 +1075,32 @@ function exportWorkbook() {
     SettlementPairKey: item.settlementPairKey || ""
   }));
 
+  const activityRows = activityLogs.map(item => ({
+    Action: item.action || "",
+    Message: item.message || "",
+    Actor: item.actorName || formatAuditUid(item.actorUid),
+    TargetType: item.targetType || "",
+    TargetId: item.targetId || "",
+    CreatedAt: formatTimestamp(item.createdAt)
+  }));
+
+  const deletedRows = getDeletedExpenses().map(expense => ({
+    Date: expense.date || "",
+    Item: expense.title || "",
+    OriginalCurrency: expense.originalCurrency || expense.currency || "",
+    OriginalAmount: Number(expense.originalAmount ?? expense.amount ?? 0),
+    PaidBy: expense.paidBy || "",
+    DeletedBy: expense.deletedByName || formatAuditUid(expense.deletedBy),
+    DeletedAt: formatTimestamp(expense.deletedAt)
+  }));
+
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(expensesRows), "Expenses");
   window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(summaryRows), "Summary");
   window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(settlementRows), "Settlement");
   window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(paidRows), "Paid Records");
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(activityRows), "Activity Log");
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(deletedRows), "Deleted Items");
 
   window.XLSX.writeFile(wb, getExportFileName());
 }
@@ -853,6 +1116,60 @@ async function handleExportExcel() {
     syncStatus.textContent = "Export error";
     alert("匯出 Excel 失敗，請稍後再試。");
   }
+}
+
+async function lockTrip() {
+  if (!isAdmin()) return alert("只有 creator 可以鎖定旅程。");
+  if (isTripLocked()) return;
+
+  const confirmed = confirm("鎖定後不可再新增、修改、刪除支出，亦不可修改成員及匯率。仍可記錄找數及匯出 Excel。確定鎖定？");
+  if (!confirmed) return;
+
+  const displayName = getCurrentUserDisplayName();
+
+  await setDoc(getTripDocRef(), {
+    status: "locked",
+    lockedAt: serverTimestamp(),
+    lockedBy: currentUser.uid,
+    lockedByName: displayName
+  }, { merge: true });
+
+  await logActivity("trip_locked", `${displayName} 鎖定旅程`, "trip", tripId, {});
+}
+
+async function unlockTrip() {
+  if (!isAdmin()) return alert("只有 creator 可以解鎖旅程。");
+  if (!isTripLocked()) return;
+
+  const confirmed = confirm("解鎖後大家可以再次修改支出及設定。除非真係要改數，否則不建議解鎖。確定解鎖？");
+  if (!confirmed) return;
+
+  const displayName = getCurrentUserDisplayName();
+
+  await setDoc(getTripDocRef(), {
+    status: "open",
+    unlockedAt: serverTimestamp(),
+    unlockedBy: currentUser.uid,
+    unlockedByName: displayName
+  }, { merge: true });
+
+  await logActivity("trip_unlocked", `${displayName} 解鎖旅程`, "trip", tripId, {});
+}
+
+function renderActivityLogs() {
+  if (!activityLogList) return;
+
+  if (!activityLogs.length) {
+    activityLogList.innerHTML = `<p class="neutral">暫時未有活動紀錄。</p>`;
+    return;
+  }
+
+  activityLogList.innerHTML = activityLogs.slice(0, 80).map(item => `
+    <div class="activity-item">
+      <div><strong>${safeEscape(item.actorName || formatAuditUid(item.actorUid))}</strong> · ${safeEscape(item.message || item.action || "Activity")}</div>
+      <div class="expense-meta">${safeEscape(item.action || "")} · ${safeEscape(item.targetType || "")} · ${formatTimestamp(item.createdAt)}</div>
+    </div>
+  `).join("");
 }
 
 /* admin panel */
@@ -1061,6 +1378,7 @@ function applyAiResultToForm() {
   closeAiPreviewModal();
 }
 async function runReceiptOCR() {
+  if (!assertTripOpen()) return;
   const file = ocrFileInput.files?.[0];
   if (!file) return alert("請先選擇收據圖片。");
   try {
@@ -1098,6 +1416,8 @@ googleSignInBtn.addEventListener("click", handleGoogleSignIn);
 signOutBtn.addEventListener("click", handleSignOut);
 if (addAllowedEmailBtn) addAllowedEmailBtn.addEventListener("click", addAllowedEmail);
 if (exportExcelBtn) exportExcelBtn.addEventListener("click", handleExportExcel);
+if (lockTripBtn) lockTripBtn.addEventListener("click", lockTrip);
+if (unlockTripBtn) unlockTripBtn.addEventListener("click", unlockTrip);
 
 getRedirectResult(auth).catch((error) => {
   console.error("Google redirect login error:", error?.code, error?.message, error);
@@ -1113,12 +1433,22 @@ onAuthStateChanged(auth, async (user) => {
     if (stopTripListener) stopTripListener();
     if (stopExpensesListener) stopExpensesListener();
     if (stopSettlementsListener) stopSettlementsListener();
+    if (stopActivityLogsListener) stopActivityLogsListener();
+    allExpenses = [];
     expenses = [];
     settlements = [];
+    activityLogs = [];
+    tripStatus = "open";
+    tripLockedAt = null;
+    tripLockedBy = null;
+    tripLockedByName = "";
     tripCreatorUid = null;
     allowedEmailsCache = [];
     renderExpenses();
+    renderDeletedExpenses();
     renderAllowedEmails();
+    renderActivityLogs();
+    updateTripStatusUi();
     summary.innerHTML = "";
     return;
   }
@@ -1132,6 +1462,7 @@ onAuthStateChanged(auth, async (user) => {
     startTripListener();
     listenToExpenses();
     listenToSettlements();
+    listenToActivityLogs();
   } catch (error) {
     console.error(error);
     if (error?.code === "permission-denied") {
