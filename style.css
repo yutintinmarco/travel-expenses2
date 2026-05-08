@@ -280,6 +280,25 @@ button {
   letter-spacing: 0.02em;
 }
 
+
+
+.backup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.summary-header-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.export-btn {
+  white-space: nowrap;
+}
+
 @media (max-width: 480px) {
   .app {
     padding: 12px;
@@ -297,6 +316,11 @@ button {
   }
 
   .rate-row {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-actions,
+  .summary-header-row {
     grid-template-columns: 1fr;
   }
 }
@@ -355,6 +379,25 @@ button {
   padding-right: 10px;
 }
 
+
+
+.backup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.summary-header-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.export-btn {
+  white-space: nowrap;
+}
+
 @media (max-width: 480px) {
   .summary-header-row {
     grid-template-columns: 1fr;
@@ -395,6 +438,25 @@ button {
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+
+
+.backup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.summary-header-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.export-btn {
+  white-space: nowrap;
 }
 
 @media (max-width: 480px) {
