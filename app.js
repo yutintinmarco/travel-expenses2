@@ -228,9 +228,10 @@ async function ensureTripMembersAndSettings() {
   const myEmail = normalizeEmail(currentUser.email);
   const uidAllowed = tripAllowedUids.includes(currentUser.uid);
   const emailAllowed = !!myEmail && allowedEmails.includes(myEmail);
+  const isCreator = data.createdBy === currentUser.uid;
 
-  // 自動 claim：email 已白名單 -> 自動加 uid
-  if (!uidAllowed && emailAllowed) {
+  // 自動 claim：email 已白名單 or 係 trip 創建者 -> 自動加 uid
+  if (!uidAllowed && (emailAllowed || isCreator)) {
     const nextUids = uniqueStrings([...tripAllowedUids, currentUser.uid]);
     await setDoc(tripRef, { allowedUids: nextUids }, { merge: true });
     tripAllowedUids = nextUids;
