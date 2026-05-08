@@ -114,8 +114,39 @@ function getSettlementKey(item) {
   return `${item.from}|${item.to}|${item.currency}|${Number(item.amount).toFixed(2)}`;
 }
 
-function getPaidSettlementForKey(key) {
-  return settlements.find(item => item.settlementKey === key && item.status === "paid") || null;
+function getSettlementPairKey(item) {
+  return `${item.from}|${item.to}|${item.currency}`;
+}
+
+function getSettlementPayments(item) {
+  const exactKey = getSettlementKey(item);
+  const pairKey = getSettlementPairKey(item);
+
+  return settlements.filter(record =>
+    record.settlementPairKey === pairKey ||
+    record.settlementKey === exactKey
+  );
+}
+
+function getSettlementPaymentSummary(item) {
+  const records = getSettlementPayments(item);
+  const paidAmount = round2(records.reduce((sum, record) => {
+    return sum + Number(record.paidAmount ?? record.amount ?? 0);
+  }, 0));
+
+  const targetAmount = round2(Number(item.amount || 0));
+  const balanceAmount = round2(Math.max(targetAmount - paidAmount, 0));
+
+  let status = "unpaid";
+  if (paidAmount > 0 && balanceAmount > 0) status = "partial";
+  if (paidAmount > 0 && balanceAmount === 0) status = "paid";
+
+  return {
+    records,
+    paidAmount,
+    balanceAmount,
+    status
+  };
 }
 
 function getExportFileName() {
@@ -567,17 +598,49 @@ function renderSummary() {
     ? settlement.map(item => {
         const settlementItem = { ...item, currency };
         const key = getSettlementKey(settlementItem);
-        const paid = getPaidSettlementForKey(key);
-        const statusHtml = paid
-          ? `<span class="paid-badge">已找數 · ${safeEscape(paid.markedByName || formatAuditUid(paid.markedBy))} · ${formatTimestamp(paid.paidAt)}</span>`
-          : `<span class="unpaid-badge">未找數</span>`;
-        const actionHtml = paid
-          ? `<button type="button" class="settle-btn secondary-btn" data-unpay-id="${safeEscape(paid.id)}">取消已找數</button>`
-          : `<button type="button" class="settle-btn" data-settlement-key="${safeEscape(key)}" data-from="${safeEscape(item.from)}" data-to="${safeEscape(item.to)}" data-amount="${Number(item.amount).toFixed(2)}" data-currency="${safeEscape(currency)}">標記已找數</button>`;
+        const pairKey = getSettlementPairKey(settlementItem);
+        const paymentSummary = getSettlementPaymentSummary(settlementItem);
+
+        const statusHtml = (() => {
+          if (paymentSummary.status === "paid") {
+            return `<span class="paid-badge">已找清 · 已找 ${currency} ${paymentSummary.paidAmount.toFixed(2)}</span>`;
+          }
+          if (paymentSummary.status === "partial") {
+            return `<span class="partial-badge">部分已找 · 已找 ${currency} ${paymentSummary.paidAmount.toFixed(2)} · 尚欠 ${currency} ${paymentSummary.balanceAmount.toFixed(2)}</span>`;
+          }
+          return `<span class="unpaid-badge">未找數</span>`;
+        })();
+
+        const actionHtml = paymentSummary.balanceAmount > 0
+          ? `
+            <div class="settlement-payment-row">
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                max="${paymentSummary.balanceAmount.toFixed(2)}"
+                placeholder="輸入已找金額"
+                data-payment-input="${safeEscape(pairKey)}"
+              />
+              <button
+                type="button"
+                class="settle-btn"
+                data-record-payment="${safeEscape(pairKey)}"
+                data-settlement-key="${safeEscape(key)}"
+                data-from="${safeEscape(item.from)}"
+                data-to="${safeEscape(item.to)}"
+                data-amount="${Number(item.amount).toFixed(2)}"
+                data-currency="${safeEscape(currency)}"
+                data-balance="${paymentSummary.balanceAmount.toFixed(2)}"
+              >記錄找數</button>
+            </div>
+          `
+          : `<button type="button" class="settle-btn secondary-btn" disabled>已找清</button>`;
 
         return `
           <div class="settlement-item">
             <div><strong>${safeEscape(item.from)}</strong> pays <strong>${safeEscape(item.to)}</strong> <span class="negative">${currency} ${Number(item.amount).toFixed(2)}</span></div>
+            <div class="settlement-progress">已找 ${currency} ${paymentSummary.paidAmount.toFixed(2)} / ${currency} ${Number(item.amount).toFixed(2)}</div>
             <div class="settlement-status">${statusHtml}</div>
             <div class="settlement-actions">${actionHtml}</div>
           </div>
@@ -586,12 +649,17 @@ function renderSummary() {
     : `<p class="neutral">暫時無需結算。</p>`;
 
   const paidHistoryHtml = settlements.length
-    ? settlements.map(item => `
-        <div class="settlement-item paid-history-item">
-          <div><strong>${safeEscape(item.from)}</strong> paid <strong>${safeEscape(item.to)}</strong> ${safeEscape(item.currency)} ${Number(item.amount || 0).toFixed(2)}</div>
-          <div class="expense-meta">標記：${safeEscape(item.markedByName || formatAuditUid(item.markedBy))} · ${formatTimestamp(item.paidAt)}</div>
-        </div>
-      `).join("")
+    ? settlements.map(item => {
+        const paidAmount = Number(item.paidAmount ?? item.amount ?? 0);
+        return `
+          <div class="settlement-item paid-history-item">
+            <div><strong>${safeEscape(item.from)}</strong> paid <strong>${safeEscape(item.to)}</strong> ${safeEscape(item.currency)} ${paidAmount.toFixed(2)}</div>
+            <div class="expense-meta">標記：${safeEscape(item.markedByName || formatAuditUid(item.markedBy))} · ${formatTimestamp(item.paidAt)}</div>
+            ${item.note ? `<div class="expense-meta">備註：${safeEscape(item.note)}</div>` : ""}
+            <button type="button" class="settle-btn secondary-btn" data-unpay-id="${safeEscape(item.id)}">取消此紀錄</button>
+          </div>
+        `;
+      }).join("")
     : `<p class="neutral">暫時未有已找數紀錄。</p>`;
 
   summary.innerHTML = `
@@ -603,12 +671,14 @@ function renderSummary() {
     ${paidHistoryHtml}
   `;
 
-  summary.querySelectorAll("[data-settlement-key]").forEach(btn => {
-    btn.addEventListener("click", () => markSettlementPaid({
+  summary.querySelectorAll("[data-record-payment]").forEach(btn => {
+    btn.addEventListener("click", () => recordSettlementPayment({
       settlementKey: btn.dataset.settlementKey,
+      settlementPairKey: btn.dataset.recordPayment,
       from: btn.dataset.from,
       to: btn.dataset.to,
-      amount: Number(btn.dataset.amount),
+      settlementAmount: Number(btn.dataset.amount),
+      balanceAmount: Number(btn.dataset.balance),
       currency: btn.dataset.currency
     }));
   });
@@ -618,21 +688,35 @@ function renderSummary() {
   });
 }
 
-async function markSettlementPaid(item) {
+async function recordSettlementPayment(item) {
   if (!currentUser) return alert("請先登入。");
 
-  const existing = getPaidSettlementForKey(item.settlementKey);
-  if (existing) return alert("呢筆已經標記為已找數。");
+  const input = summary.querySelector(`[data-payment-input="${CSS.escape(item.settlementPairKey)}"]`);
+  const paidAmount = Number(input?.value);
 
-  if (!confirm(`${item.from} 已找 ${item.to} ${item.currency} ${Number(item.amount).toFixed(2)}？`)) return;
+  if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+    return alert("請輸入有效找數金額。");
+  }
+
+  if (paidAmount > item.balanceAmount) {
+    const confirmed = confirm(`輸入金額 ${item.currency} ${paidAmount.toFixed(2)} 大過尚欠 ${item.currency} ${item.balanceAmount.toFixed(2)}，仍然記錄？`);
+    if (!confirmed) return;
+  }
+
+  const note = prompt("備註，例如 FPS / Cash / Alipay，可留空：", "") || "";
 
   await addDoc(getSettlementsCollection(), {
     settlementKey: item.settlementKey,
+    settlementPairKey: item.settlementPairKey,
     from: item.from,
     to: item.to,
-    amount: Number(item.amount),
+    settlementAmount: Number(item.settlementAmount),
+    balanceBeforePayment: Number(item.balanceAmount),
+    paidAmount,
+    amount: paidAmount,
     currency: item.currency,
-    status: "paid",
+    status: paidAmount >= item.balanceAmount ? "paid" : "partial",
+    note: note.trim(),
     markedBy: currentUser.uid,
     markedByName: getCurrentUserDisplayName(),
     paidAt: serverTimestamp()
@@ -689,16 +773,18 @@ function exportWorkbook() {
   const settlementRows = settlement.map(item => {
     const row = { ...item, currency };
     const key = getSettlementKey(row);
-    const paid = getPaidSettlementForKey(key);
+    const pairKey = getSettlementPairKey(row);
+    const paymentSummary = getSettlementPaymentSummary(row);
     return {
       From: item.from,
       To: item.to,
       Currency: currency,
-      Amount: Number(item.amount),
-      Status: paid ? "Paid" : "Unpaid",
-      MarkedBy: paid ? (paid.markedByName || formatAuditUid(paid.markedBy)) : "",
-      PaidAt: paid ? formatTimestamp(paid.paidAt) : "",
-      SettlementKey: key
+      RecommendedAmount: Number(item.amount),
+      PaidAmount: paymentSummary.paidAmount,
+      BalanceAmount: paymentSummary.balanceAmount,
+      Status: paymentSummary.status === "paid" ? "Paid" : paymentSummary.status === "partial" ? "Partial" : "Unpaid",
+      SettlementKey: key,
+      SettlementPairKey: pairKey
     };
   });
 
@@ -706,11 +792,15 @@ function exportWorkbook() {
     From: item.from || "",
     To: item.to || "",
     Currency: item.currency || "",
-    Amount: Number(item.amount || 0),
+    PaidAmount: Number(item.paidAmount ?? item.amount ?? 0),
+    SettlementAmount: Number(item.settlementAmount ?? 0),
+    BalanceBeforePayment: Number(item.balanceBeforePayment ?? 0),
     Status: item.status || "",
+    Note: item.note || "",
     MarkedBy: item.markedByName || formatAuditUid(item.markedBy),
     PaidAt: formatTimestamp(item.paidAt),
-    SettlementKey: item.settlementKey || ""
+    SettlementKey: item.settlementKey || "",
+    SettlementPairKey: item.settlementPairKey || ""
   }));
 
   const wb = window.XLSX.utils.book_new();
