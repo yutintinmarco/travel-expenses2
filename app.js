@@ -79,6 +79,7 @@ let currentUser = null;
 let expenses = [];
 let editingExpenseId = null;
 let stopTripListener = null;
+let tripAllowedUids = [];
 
 /* ----------------- utils ----------------- */
 function safeEscape(text) {
@@ -115,6 +116,10 @@ function setToday() {
 
 function getSelectedParticipants() {
   return Array.from(sharedByGroup.querySelectorAll("input:checked")).map(input => input.value);
+}
+
+function uniqueStrings(arr) {
+  return [...new Set((arr || []).filter(Boolean).map(v => String(v)))];
 }
 
 /* ----------------- members ----------------- */
@@ -158,7 +163,9 @@ async function addMember() {
   if (exists) return alert("成員名稱已存在。");
 
   const nextMembers = [...members, name];
+
   try {
+    // 只改 members；權限控制唔係靠 members，而係 allowedUids
     await setDoc(getTripDocRef(), { members: nextMembers }, { merge: true });
     members = nextMembers;
     initMembers();
@@ -240,12 +247,16 @@ async function saveTripSettings() {
 }
 
 async function ensureTripMembersAndSettings() {
-  const tripDoc = await getDoc(getTripDocRef());
+  const tripRef = getTripDocRef();
+  const tripDoc = await getDoc(tripRef);
 
   if (!tripDoc.exists()) {
     members = ["Marco", "A", "B", "C"];
-    await setDoc(getTripDocRef(), {
+    tripAllowedUids = [currentUser.uid];
+
+    await setDoc(tripRef, {
       members,
+      allowedUids: tripAllowedUids,
       settings: tripSettings,
       createdAt: serverTimestamp(),
       createdBy: currentUser ? currentUser.uid : null
@@ -255,13 +266,15 @@ async function ensureTripMembersAndSettings() {
 
   const data = tripDoc.data();
 
+  // members
   if (Array.isArray(data.members) && data.members.length > 0) {
     members = data.members;
   } else {
     members = ["Marco"];
-    await setDoc(getTripDocRef(), { members }, { merge: true });
+    await setDoc(tripRef, { members }, { merge: true });
   }
 
+  // settings
   if (data.settings) {
     tripSettings = {
       ...tripSettings,
@@ -272,7 +285,27 @@ async function ensureTripMembersAndSettings() {
       }
     };
   } else {
-    await setDoc(getTripDocRef(), { settings: tripSettings }, { merge: true });
+    await setDoc(tripRef, { settings: tripSettings }, { merge: true });
+  }
+
+  // allowedUids（安全重點）
+  if (Array.isArray(data.allowedUids) && data.allowedUids.length > 0) {
+    tripAllowedUids = uniqueStrings(data.allowedUids);
+
+    // 保底：如果自己未喺入面（理論上 rules 會擋），就嘗試補寫（可能失敗）
+    if (currentUser?.uid && !tripAllowedUids.includes(currentUser.uid)) {
+      const next = uniqueStrings([...tripAllowedUids, currentUser.uid]);
+      try {
+        await setDoc(tripRef, { allowedUids: next }, { merge: true });
+        tripAllowedUids = next;
+      } catch (e) {
+        console.warn("No permission to add current uid into allowedUids.", e);
+      }
+    }
+  } else {
+    // 舊資料升級：無 allowedUids 時，自動補自己 UID
+    tripAllowedUids = [currentUser.uid];
+    await setDoc(tripRef, { allowedUids: tripAllowedUids }, { merge: true });
   }
 }
 
@@ -293,6 +326,10 @@ function startTripListener() {
       }
     }
 
+    if (Array.isArray(data.allowedUids)) {
+      tripAllowedUids = uniqueStrings(data.allowedUids);
+    }
+
     if (data.settings) {
       tripSettings = {
         ...tripSettings,
@@ -306,7 +343,13 @@ function startTripListener() {
       renderSummary();
       renderExpenses();
     }
-  }, error => console.error(error));
+  }, error => {
+    console.error(error);
+    if (error?.code === "permission-denied") {
+      syncStatus.textContent = "No access to this trip";
+      alert("你無權限存取此 trip（permission-denied）。請確認 allowedUids 同 Firestore rules。");
+    }
+  });
 }
 
 /* ----------------- expense CRUD ----------------- */
@@ -539,7 +582,12 @@ function listenToExpenses() {
     syncStatus.textContent = `Synced (${tripId})`;
   }, error => {
     console.error(error);
-    syncStatus.textContent = "Sync error";
+    if (error?.code === "permission-denied") {
+      syncStatus.textContent = "No access to expenses";
+      alert("你無權限讀寫此 trip 的 expenses。");
+    } else {
+      syncStatus.textContent = "Sync error";
+    }
   });
 }
 
@@ -759,7 +807,6 @@ function parseReceiptTextAdvanced(rawText, currentCurrency) {
 
   const merchant = extractTitleAdvanced(lines);
 
-  // 純規則信心估算（0~1）
   let confidence = 0.45;
   if (amount !== null) confidence += 0.2;
   if (date) confidence += 0.15;
@@ -867,9 +914,20 @@ onAuthStateChanged(auth, async user => {
   if (!user) return;
   currentUser = user;
   syncStatus.textContent = "Connected";
-  await ensureTripMembersAndSettings();
-  initMembers();
-  renderRateEditor();
-  startTripListener();
-  listenToExpenses();
+
+  try {
+    await ensureTripMembersAndSettings();
+    initMembers();
+    renderRateEditor();
+    startTripListener();
+    listenToExpenses();
+  } catch (error) {
+    console.error(error);
+    if (error?.code === "permission-denied") {
+      syncStatus.textContent = "No access";
+      alert("你無權限進入此 trip。請叫管理者把你 UID 加入 allowedUids。");
+    } else {
+      syncStatus.textContent = "Init error";
+    }
+  }
 });
