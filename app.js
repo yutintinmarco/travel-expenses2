@@ -1624,10 +1624,31 @@ if (cancelAiFillBtn) cancelAiFillBtn.addEventListener("click", closeAiPreviewMod
 googleSignInBtn.addEventListener("click", handleGoogleSignIn);
 signOutBtn.addEventListener("click", handleSignOut);
 if (addAllowedEmailBtn) addAllowedEmailBtn.addEventListener("click", addAllowedEmail);
-if (exportExcelBtn) exportExcelBtn.addEventListener("click", handleExportExcel);
-if (exportExcelReportBtn) exportExcelReportBtn.addEventListener("click", handleExportExcel);
-if (exportJsonBtn) exportJsonBtn.addEventListener("click", handleExportJsonBackup);
-if (exportJsonBackupBtn) exportJsonBackupBtn.addEventListener("click", handleExportJsonBackup);
+
+[exportExcelBtn, exportExcelReportBtn].forEach(button => {
+  if (button) button.dataset.action = "export-excel";
+});
+
+[exportJsonBtn, exportJsonBackupBtn].forEach(button => {
+  if (button) button.dataset.action = "export-json";
+});
+
+// Export buttons can appear in more than one desktop/mobile section.
+// Use data-action delegation instead of binding a single ID, so every matching button works.
+document.addEventListener("click", (event) => {
+  const exportJsonButton = event.target.closest('[data-action="export-json"]');
+  if (exportJsonButton) {
+    event.preventDefault();
+    handleExportJsonBackup();
+    return;
+  }
+
+  const exportExcelButton = event.target.closest('[data-action="export-excel"]');
+  if (exportExcelButton) {
+    event.preventDefault();
+    handleExportExcel();
+  }
+});
 if (lockTripBtn) lockTripBtn.addEventListener("click", lockTrip);
 if (unlockTripBtn) unlockTripBtn.addEventListener("click", unlockTrip);
 
