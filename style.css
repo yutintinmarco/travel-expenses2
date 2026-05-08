@@ -258,6 +258,12 @@ button {
   gap: 10px;
 }
 
+.expense-audit {
+  color: #aeaeb2;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
 .admin-badge {
   display: inline-block;
   font-size: 11px;
