@@ -19,6 +19,7 @@
         <button type="button" id="signOutBtn" class="secondary-btn hidden">登出</button>
       </div>
       <p id="authUserText" class="hint"></p>
+      <p id="tripStatusText" class="hint"></p>
     </section>
 
     <section class="card">
@@ -135,6 +136,15 @@
       </div>
     </section>
 
+    <section class="card hidden" id="tripControlPanel">
+      <h2>旅程控制</h2>
+      <p class="hint">鎖定後不可再新增、修改或刪除支出，亦不可修改成員及匯率；仍可記錄找數及匯出 Excel。</p>
+      <div class="form-actions">
+        <button type="button" id="lockTripBtn">鎖定此旅程</button>
+        <button type="button" id="unlockTripBtn" class="secondary-btn hidden">解鎖此旅程</button>
+      </div>
+    </section>
+
     <section class="card">
       <div class="summary-header-row">
         <h2>結算 Summary</h2>
@@ -146,6 +156,18 @@
     <section class="card">
       <h2>支出列表</h2>
       <div id="expenseList"></div>
+    </section>
+
+    <section class="card">
+      <h2>Deleted Items</h2>
+      <p class="hint">已刪除支出會保留作 audit trail，不會參與結算。</p>
+      <div id="deletedExpenseList"></div>
+    </section>
+
+    <section class="card">
+      <h2>Activity Log</h2>
+      <p class="hint">記錄新增、修改、刪除、找數、鎖定等主要動作。</p>
+      <div id="activityLogList"></div>
     </section>
   </main>
 
