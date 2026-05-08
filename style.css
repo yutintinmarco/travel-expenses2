@@ -504,3 +504,22 @@ button:disabled {
 .activity-item:last-child {
   border-bottom: 0;
 }
+
+
+/* Phase 2.1 hotfix: ensure export buttons are clickable on desktop and mobile */
+[data-action="export-json"],
+[data-action="export-excel"] {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.summary-header-row > h2 {
+  min-width: 0;
+}
+
+@media (min-width: 481px) {
+  .summary-header-row {
+    grid-template-columns: 1fr auto auto;
+  }
+}
