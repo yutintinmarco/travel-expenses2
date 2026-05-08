@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Trip Expenses (Free OCR)</title>
+  <title>Trip Expenses (Google Sign-In)</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -11,8 +11,14 @@
   <main class="app">
     <section class="header-card">
       <p class="eyebrow">Travel Expense Module</p>
-      <h1>旅行支出記錄（免費 OCR 版）</h1>
+      <h1>旅行支出記錄（Google 登入）</h1>
       <p id="syncStatus">Connecting...</p>
+
+      <div class="auth-row">
+        <button type="button" id="googleSignInBtn">Google 登入</button>
+        <button type="button" id="signOutBtn" class="secondary-btn hidden">登出</button>
+      </div>
+      <p id="authUserText" class="hint"></p>
     </section>
 
     <section class="card">
@@ -105,9 +111,7 @@
         <input type="file" id="ocrReceiptInput" accept="image/*" />
       </label>
       <button type="button" id="ocrScanBtn" class="secondary-btn">掃描並分析</button>
-      <p class="hint">
-        本地 Tesseract OCR + 規則抽取（免費，無需 API key）
-      </p>
+      <p class="hint">本地 Tesseract OCR + 規則抽取（免費）</p>
     </section>
 
     <section class="card">
@@ -132,21 +136,12 @@
     </section>
   </main>
 
-  <!-- OCR 結果確認 Modal -->
   <div id="ocrPreviewModal" class="modal hidden">
     <div class="modal-card">
       <h3>確認收據資料</h3>
 
-      <label>
-        商戶
-        <input type="text" id="aiMerchantInput" />
-      </label>
-
-      <label>
-        日期
-        <input type="date" id="aiDateInput" />
-      </label>
-
+      <label>商戶 <input type="text" id="aiMerchantInput" /></label>
+      <label>日期 <input type="date" id="aiDateInput" /></label>
       <label>
         幣別
         <select id="aiCurrencyInput">
@@ -158,21 +153,9 @@
           <option value="USD">USD</option>
         </select>
       </label>
-
-      <label>
-        總額
-        <input type="number" id="aiTotalInput" step="0.01" min="0" />
-      </label>
-
-      <label>
-        信心值
-        <input type="text" id="aiConfidenceInput" readonly />
-      </label>
-
-      <label>
-        解析說明
-        <textarea id="aiReasonInput" rows="3" readonly></textarea>
-      </label>
+      <label>總額 <input type="number" id="aiTotalInput" step="0.01" min="0" /></label>
+      <label>信心值 <input type="text" id="aiConfidenceInput" readonly /></label>
+      <label>解析說明 <textarea id="aiReasonInput" rows="3" readonly></textarea></label>
 
       <div class="form-actions">
         <button type="button" id="confirmAiFillBtn">確認填入</button>
