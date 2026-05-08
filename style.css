@@ -144,6 +144,14 @@ button {
   margin-top: 4px;
 }
 
+
+.expense-audit {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #8e8e93;
+  line-height: 1.4;
+}
+
 .edit-btn,
 .delete-btn {
   margin-top: 8px;
@@ -258,10 +266,6 @@ button {
   gap: 10px;
 }
 
-.expense-audit {
-  color: #aeaeb2;
-  font-size: 11px;
-  margin-top: 4px;
 }
 
 .admin-badge {

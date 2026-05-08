@@ -431,15 +431,15 @@ async function removeMember(name) {
 }
 
 function formatAuditUid(uid) {
-  if (!uid) return "—";
+  if (!uid) return "未知";
   if (currentUser && uid === currentUser.uid) return "你";
   return uid.slice(0, 7) + "…";
 }
 
 function formatTimestamp(ts) {
-  if (!ts) return "";
+  if (!ts) return "時間未記錄";
   const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
-  if (isNaN(d)) return "";
+  if (isNaN(d)) return "時間未記錄";
   return d.toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
@@ -459,8 +459,8 @@ function renderExpenses() {
         <div class="expense-meta">${safeEscape(expense.date)} · Paid by ${safeEscape(expense.paidBy)} · Shared by ${shareText}</div>
         <div class="expense-meta">${safeEscape(expense.category)}${expense.note ? ` · ${safeEscape(expense.note)}` : ""}</div>
         <div class="expense-audit">
-          建立：${formatAuditUid(expense.createdBy)}${expense.createdAt ? ` ${formatTimestamp(expense.createdAt)}` : ""}
-          ${expense.updatedBy && expense.updatedBy !== expense.createdBy ? ` · 改：${formatAuditUid(expense.updatedBy)}${expense.updatedAt ? ` ${formatTimestamp(expense.updatedAt)}` : ""}` : ""}
+          <div>建立：${formatAuditUid(expense.createdBy)} · ${formatTimestamp(expense.createdAt)}</div>
+          <div>更新：${formatAuditUid(expense.updatedBy)} · ${formatTimestamp(expense.updatedAt)}</div>
         </div>
         <button class="edit-btn" data-edit-id="${safeEscape(expense.id)}">Edit</button>
         <button class="delete-btn" data-delete-id="${safeEscape(expense.id)}">Delete</button>
