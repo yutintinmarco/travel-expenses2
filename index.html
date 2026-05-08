@@ -151,16 +151,16 @@
       <h2>資料備份</h2>
       <p class="hint">JSON Backup 係完整系統備份，包含 trip 設定、支出、找數紀錄、Deleted Items 同 Activity Log。Excel 主要用於對數及報銷。</p>
       <div class="backup-actions">
-        <button type="button" id="exportJsonBackupBtn" class="secondary-btn">匯出 JSON Backup</button>
-        <button type="button" id="exportExcelReportBtn" class="secondary-btn">匯出 Excel Report</button>
+        <button type="button" id="exportJsonBackupBtn" data-action="export-json" class="secondary-btn">匯出 JSON Backup</button>
+        <button type="button" id="exportExcelReportBtn" data-action="export-excel" class="secondary-btn">匯出 Excel Report</button>
       </div>
     </section>
 
     <section class="card">
       <div class="summary-header-row">
         <h2>結算 Summary</h2>
-        <button type="button" id="exportExcelBtn" class="secondary-btn export-btn">匯出 Excel</button>
-        <button type="button" id="exportJsonBtn" class="secondary-btn export-btn">匯出 JSON Backup</button>
+        <button type="button" id="exportExcelBtn" data-action="export-excel" class="secondary-btn export-btn">匯出 Excel</button>
+        <button type="button" id="exportJsonBtn" data-action="export-json" class="secondary-btn export-btn">匯出 JSON Backup</button>
       </div>
       <div id="summary"></div>
     </section>
