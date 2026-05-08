@@ -82,6 +82,9 @@ const allowedEmailList = document.getElementById("allowedEmailList");
 const allowedEmailInput = document.getElementById("allowedEmailInput");
 const addAllowedEmailBtn = document.getElementById("addAllowedEmailBtn");
 const exportExcelBtn = document.getElementById("exportExcelBtn");
+const exportJsonBtn = document.getElementById("exportJsonBtn");
+const exportJsonBackupBtn = document.getElementById("exportJsonBackupBtn");
+const exportExcelReportBtn = document.getElementById("exportExcelReportBtn");
 
 const tripControlPanel = document.getElementById("tripControlPanel");
 const tripStatusText = document.getElementById("tripStatusText");
@@ -256,6 +259,49 @@ function applyRecordedPaymentsToNet(net, currency) {
 function getExportFileName() {
   const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   return `trip-expenses-${tripId}-${date}.xlsx`;
+}
+
+function getJsonBackupFileName() {
+  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  return `trip-expenses-backup-${tripId}-${date}.json`;
+}
+
+function timestampToIso(ts) {
+  if (!ts) return "";
+  const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
+function toPlainValue(value) {
+  if (value == null) return value;
+
+  if (typeof value?.toDate === "function") {
+    return timestampToIso(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => toPlainValue(item));
+  }
+
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, val]) => [key, toPlainValue(val)])
+    );
+  }
+
+  return value;
+}
+
+function downloadTextFile(filename, text, mimeType) {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function setToday() { dateInput.value = new Date().toISOString().slice(0, 10); }
@@ -1003,10 +1049,79 @@ async function ensureSheetJs() {
   });
 }
 
+function worksheetFromRows(rows, headers) {
+  const normalizedRows = rows.length
+    ? rows
+    : [Object.fromEntries(headers.map(header => [header, ""]))];
+
+  const ws = window.XLSX.utils.json_to_sheet(normalizedRows, { header: headers });
+  if (ws["!ref"]) {
+    ws["!autofilter"] = { ref: ws["!ref"] };
+  }
+  ws["!cols"] = headers.map(header => ({ wch: Math.max(String(header).length + 2, 14) }));
+  return ws;
+}
+
+function coverSheetFromSummary(metrics) {
+  const rows = [
+    ["Trip Expense Report"],
+    [],
+    ["Trip ID", tripId],
+    ["Trip Status", tripStatus],
+    ["Base Currency", metrics.currency],
+    ["Exported At", new Date().toLocaleString("zh-HK")],
+    ["Exported By", getCurrentUserDisplayName()],
+    ["Active Expenses", expenses.length],
+    ["Deleted Expenses", getDeletedExpenses().length],
+    ["Payment Records", settlements.length],
+    ["Activity Log Records", activityLogs.length],
+    ["Total Active Expense Amount", metrics.totalActiveExpenses],
+    ["Total Recorded Payments", metrics.recordedPaymentsTotal],
+    ["Outstanding Settlement Count", metrics.outstandingCount],
+    ["Outstanding Settlement Amount", metrics.outstandingAmount]
+  ];
+
+  const ws = window.XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [{ wch: 30 }, { wch: 28 }];
+  return ws;
+}
+
 function exportWorkbook() {
   const { expenseNet, net, settlement, currency, recordedPaymentsTotal } = calculateSummary();
+  const totalActiveExpenses = round2(expenses.reduce((sum, expense) => sum + Number(expense.convertedAmount ?? 0), 0));
+  const outstandingAmount = round2(settlement.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+
+  const coverWs = coverSheetFromSummary({
+    currency,
+    totalActiveExpenses,
+    recordedPaymentsTotal,
+    outstandingCount: settlement.length,
+    outstandingAmount
+  });
+
+  const expenseHeaders = [
+    "Status",
+    "Date",
+    "Item",
+    "Category",
+    "OriginalCurrency",
+    "OriginalAmount",
+    "FxRateUsed",
+    "BaseCurrency",
+    "ConvertedAmount",
+    "PaidBy",
+    "SharedBy",
+    "Note",
+    "CreatedBy",
+    "CreatedAt",
+    "UpdatedBy",
+    "UpdatedAt",
+    "DeletedBy",
+    "DeletedAt"
+  ];
 
   const expensesRows = allExpenses.map(expense => ({
+    Status: expense.isDeleted === true ? "Deleted" : "Active",
     Date: expense.date || "",
     Item: expense.title || "",
     Category: expense.category || "",
@@ -1022,10 +1137,19 @@ function exportWorkbook() {
     CreatedAt: formatTimestamp(expense.createdAt),
     UpdatedBy: expense.updatedByName || formatAuditUid(expense.updatedBy),
     UpdatedAt: formatTimestamp(expense.updatedAt),
-    IsDeleted: expense.isDeleted === true ? "Yes" : "No",
     DeletedBy: expense.deletedByName || formatAuditUid(expense.deletedBy),
     DeletedAt: formatTimestamp(expense.deletedAt)
   }));
+
+  const summaryHeaders = [
+    "Person",
+    "OriginalStatusBeforePayments",
+    "OriginalAmountBeforePayments",
+    "PaymentEffect",
+    "FinalStatusAfterPayments",
+    "FinalAmountAfterPayments",
+    "Currency"
+  ];
 
   const summaryRows = Object.entries(net).map(([person, amount]) => {
     const rounded = round2(amount);
@@ -1039,10 +1163,19 @@ function exportWorkbook() {
       PaymentEffect: paymentEffect,
       FinalStatusAfterPayments: rounded > 0 ? "Receivable" : rounded < 0 ? "Payable" : "Settled",
       FinalAmountAfterPayments: Math.abs(rounded),
-      Currency: currency,
-      RecordedPaymentsTotal: recordedPaymentsTotal
+      Currency: currency
     };
   });
+
+  const settlementHeaders = [
+    "From",
+    "To",
+    "Currency",
+    "RemainingAmountToPay",
+    "Status",
+    "SettlementPairKey",
+    "SettlementKey"
+  ];
 
   const settlementRows = settlement.map(item => {
     const row = { ...item, currency };
@@ -1055,10 +1188,25 @@ function exportWorkbook() {
       Currency: currency,
       RemainingAmountToPay: Number(item.amount),
       Status: "Outstanding after recorded payments",
-      SettlementKey: key,
-      SettlementPairKey: pairKey
+      SettlementPairKey: pairKey,
+      SettlementKey: key
     };
   });
+
+  const paidHeaders = [
+    "From",
+    "To",
+    "Currency",
+    "PaidAmount",
+    "SettlementAmount",
+    "BalanceBeforePayment",
+    "Status",
+    "Note",
+    "MarkedBy",
+    "PaidAt",
+    "SettlementPairKey",
+    "SettlementKey"
+  ];
 
   const paidRows = settlements.map(item => ({
     From: item.from || "",
@@ -1071,10 +1219,11 @@ function exportWorkbook() {
     Note: item.note || "",
     MarkedBy: item.markedByName || formatAuditUid(item.markedBy),
     PaidAt: formatTimestamp(item.paidAt),
-    SettlementKey: item.settlementKey || "",
-    SettlementPairKey: item.settlementPairKey || ""
+    SettlementPairKey: item.settlementPairKey || "",
+    SettlementKey: item.settlementKey || ""
   }));
 
+  const activityHeaders = ["Action", "Message", "Actor", "TargetType", "TargetId", "CreatedAt"];
   const activityRows = activityLogs.map(item => ({
     Action: item.action || "",
     Message: item.message || "",
@@ -1084,25 +1233,73 @@ function exportWorkbook() {
     CreatedAt: formatTimestamp(item.createdAt)
   }));
 
+  const deletedHeaders = ["Date", "Item", "OriginalCurrency", "OriginalAmount", "PaidBy", "SharedBy", "DeletedBy", "DeletedAt"];
   const deletedRows = getDeletedExpenses().map(expense => ({
     Date: expense.date || "",
     Item: expense.title || "",
     OriginalCurrency: expense.originalCurrency || expense.currency || "",
     OriginalAmount: Number(expense.originalAmount ?? expense.amount ?? 0),
     PaidBy: expense.paidBy || "",
+    SharedBy: Array.isArray(expense.sharedBy) ? expense.sharedBy.join(", ") : "",
     DeletedBy: expense.deletedByName || formatAuditUid(expense.deletedBy),
     DeletedAt: formatTimestamp(expense.deletedAt)
   }));
 
   const wb = window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(expensesRows), "Expenses");
-  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(summaryRows), "Summary");
-  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(settlementRows), "Settlement");
-  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(paidRows), "Paid Records");
-  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(activityRows), "Activity Log");
-  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(deletedRows), "Deleted Items");
+  window.XLSX.utils.book_append_sheet(wb, coverWs, "Cover");
+  window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(expensesRows, expenseHeaders), "Expenses");
+  window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(summaryRows, summaryHeaders), "Summary");
+  window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(settlementRows, settlementHeaders), "Settlement");
+  window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(paidRows, paidHeaders), "Paid Records");
+  window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(activityRows, activityHeaders), "Activity Log");
+  window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(deletedRows, deletedHeaders), "Deleted Items");
 
   window.XLSX.writeFile(wb, getExportFileName());
+}
+
+function exportJsonBackup() {
+  const { expenseNet, net, settlement, currency, recordedPaymentsTotal } = calculateSummary();
+
+  const backup = {
+    schemaVersion: 2,
+    appName: "travel-expenses",
+    exportedAt: new Date().toISOString(),
+    exportedBy: {
+      uid: currentUser?.uid || "",
+      name: getCurrentUserDisplayName(),
+      email: currentUser?.email || ""
+    },
+    trip: {
+      tripId,
+      status: tripStatus,
+      lockedAt: timestampToIso(tripLockedAt),
+      lockedBy: tripLockedBy || "",
+      lockedByName: tripLockedByName || "",
+      creatorUid: tripCreatorUid || "",
+      members: [...members],
+      settings: toPlainValue(tripSettings),
+      allowedEmails: [...allowedEmailsCache],
+      allowedUids: [...tripAllowedUids]
+    },
+    data: {
+      expenses: toPlainValue(allExpenses),
+      settlements: toPlainValue(settlements),
+      activityLogs: toPlainValue(activityLogs)
+    },
+    computed: {
+      currency,
+      expenseNet: toPlainValue(expenseNet),
+      finalNet: toPlainValue(net),
+      settlement: toPlainValue(settlement),
+      recordedPaymentsTotal
+    }
+  };
+
+  downloadTextFile(
+    getJsonBackupFileName(),
+    JSON.stringify(backup, null, 2),
+    "application/json;charset=utf-8"
+  );
 }
 
 async function handleExportExcel() {
@@ -1115,6 +1312,18 @@ async function handleExportExcel() {
     console.error(error);
     syncStatus.textContent = "Export error";
     alert("匯出 Excel 失敗，請稍後再試。");
+  }
+}
+
+async function handleExportJsonBackup() {
+  try {
+    syncStatus.textContent = "Preparing JSON backup...";
+    exportJsonBackup();
+    syncStatus.textContent = `Synced (${tripId})`;
+  } catch (error) {
+    console.error(error);
+    syncStatus.textContent = "JSON export error";
+    alert("匯出 JSON Backup 失敗，請稍後再試。");
   }
 }
 
@@ -1416,6 +1625,9 @@ googleSignInBtn.addEventListener("click", handleGoogleSignIn);
 signOutBtn.addEventListener("click", handleSignOut);
 if (addAllowedEmailBtn) addAllowedEmailBtn.addEventListener("click", addAllowedEmail);
 if (exportExcelBtn) exportExcelBtn.addEventListener("click", handleExportExcel);
+if (exportExcelReportBtn) exportExcelReportBtn.addEventListener("click", handleExportExcel);
+if (exportJsonBtn) exportJsonBtn.addEventListener("click", handleExportJsonBackup);
+if (exportJsonBackupBtn) exportJsonBackupBtn.addEventListener("click", handleExportJsonBackup);
 if (lockTripBtn) lockTripBtn.addEventListener("click", lockTrip);
 if (unlockTripBtn) unlockTripBtn.addEventListener("click", unlockTrip);
 
