@@ -402,3 +402,43 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Phase 1 controls: lock, activity log, soft delete */
+.locked-badge,
+.open-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.locked-badge {
+  background: #fee4e2;
+  color: #b42318;
+}
+
+.open-badge {
+  background: #e7f6ec;
+  color: #0a7a2f;
+}
+
+.deleted-item {
+  opacity: 0.82;
+  background: rgba(180, 35, 24, 0.035);
+  border-radius: 14px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.activity-item {
+  border-bottom: 1px solid #eeeeee;
+  padding: 10px 0;
+  font-size: 14px;
+}
+
+.activity-item:last-child {
+  border-bottom: 0;
+}
