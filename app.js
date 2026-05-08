@@ -77,12 +77,19 @@ const googleSignInBtn = document.getElementById("googleSignInBtn");
 const signOutBtn = document.getElementById("signOutBtn");
 const authUserText = document.getElementById("authUserText");
 
+const adminPanel = document.getElementById("adminPanel");
+const allowedEmailList = document.getElementById("allowedEmailList");
+const allowedEmailInput = document.getElementById("allowedEmailInput");
+const addAllowedEmailBtn = document.getElementById("addAllowedEmailBtn");
+
 let currentUser = null;
 let expenses = [];
 let editingExpenseId = null;
 let stopTripListener = null;
 let stopExpensesListener = null;
 let tripAllowedUids = [];
+let tripCreatorUid = null;
+let allowedEmailsCache = [];
 
 /* utils */
 const safeEscape = (text) => String(text ?? "")
@@ -206,12 +213,14 @@ async function ensureTripMembersAndSettings() {
   if (!tripDoc.exists()) {
     members = [currentUser.displayName || "Me"];
     tripAllowedUids = [currentUser.uid];
+    tripCreatorUid = currentUser.uid;
     const myEmail = normalizeEmail(currentUser.email);
+    allowedEmailsCache = myEmail ? [myEmail] : [];
 
     await setDoc(tripRef, {
       members,
       allowedUids: tripAllowedUids,
-      allowedEmails: myEmail ? [myEmail] : [],
+      allowedEmails: allowedEmailsCache,
       settings: tripSettings,
       createdAt: serverTimestamp(),
       createdBy: currentUser.uid
@@ -221,9 +230,11 @@ async function ensureTripMembersAndSettings() {
 
   const data = tripDoc.data();
   tripAllowedUids = Array.isArray(data.allowedUids) ? uniqueStrings(data.allowedUids) : [];
+  tripCreatorUid = data.createdBy || null;
   const allowedEmails = Array.isArray(data.allowedEmails)
     ? data.allowedEmails.map(normalizeEmail).filter(Boolean)
     : [];
+  allowedEmailsCache = allowedEmails;
 
   const myEmail = normalizeEmail(currentUser.email);
   const uidAllowed = tripAllowedUids.includes(currentUser.uid);
@@ -254,7 +265,7 @@ async function ensureTripMembersAndSettings() {
       exchangeRates: { ...tripSettings.exchangeRates, ...(data.settings.exchangeRates || {}) }
     };
   } else {
-    await setDoc(tripRef, { settings: tripSettings }, { merge: true });
+    await setDoc(getTripDocRef(), { settings: tripSettings }, { merge: true });
   }
 }
 
@@ -276,6 +287,11 @@ function startTripListener() {
     }
 
     if (Array.isArray(data.allowedUids)) tripAllowedUids = uniqueStrings(data.allowedUids);
+    if (data.createdBy) tripCreatorUid = data.createdBy;
+    if (Array.isArray(data.allowedEmails)) {
+      allowedEmailsCache = data.allowedEmails.map(normalizeEmail).filter(Boolean);
+      renderAllowedEmails();
+    }
 
     if (data.settings) {
       tripSettings = {
@@ -496,6 +512,42 @@ function renderSummary() {
   summary.innerHTML = `<h3>每人淨額（${currency}）</h3>${netHtml}<h3>建議結算</h3>${settlementHtml}`;
 }
 
+/* admin panel */
+function isAdmin() {
+  return !!(currentUser && tripCreatorUid && currentUser.uid === tripCreatorUid);
+}
+
+function renderAllowedEmails() {
+  if (!adminPanel) return;
+  if (!isAdmin()) { adminPanel.classList.add("hidden"); return; }
+  adminPanel.classList.remove("hidden");
+
+  allowedEmailList.innerHTML = allowedEmailsCache.length
+    ? allowedEmailsCache.map(email => `
+        <div class="member-chip">
+          <span>${safeEscape(email)}</span>
+          <button type="button" data-remove-email="${safeEscape(email)}">移除</button>
+        </div>`).join("")
+    : `<p class="hint" style="margin:0">暫無授權 email</p>`;
+
+  allowedEmailList.querySelectorAll("[data-remove-email]").forEach(btn => {
+    btn.addEventListener("click", () => removeAllowedEmail(btn.dataset.removeEmail));
+  });
+}
+
+async function addAllowedEmail() {
+  const email = normalizeEmail(allowedEmailInput.value);
+  if (!email || !email.includes("@")) return alert("請輸入有效 email。");
+  if (allowedEmailsCache.includes(email)) return alert("此 email 已在名單中。");
+  await setDoc(getTripDocRef(), { allowedEmails: [...allowedEmailsCache, email] }, { merge: true });
+  allowedEmailInput.value = "";
+}
+
+async function removeAllowedEmail(email) {
+  if (!confirm(`移除 ${email}？`)) return;
+  await setDoc(getTripDocRef(), { allowedEmails: allowedEmailsCache.filter(e => e !== email) }, { merge: true });
+}
+
 /* OCR local free */
 async function ensureTesseract() {
   if (window.Tesseract) return;
@@ -650,6 +702,7 @@ if (cancelAiFillBtn) cancelAiFillBtn.addEventListener("click", closeAiPreviewMod
 
 googleSignInBtn.addEventListener("click", handleGoogleSignIn);
 signOutBtn.addEventListener("click", handleSignOut);
+if (addAllowedEmailBtn) addAllowedEmailBtn.addEventListener("click", addAllowedEmail);
 
 getRedirectResult(auth).catch((error) => {
   console.error("Google redirect login error:", error?.code, error?.message, error);
@@ -665,7 +718,10 @@ onAuthStateChanged(auth, async (user) => {
     if (stopTripListener) stopTripListener();
     if (stopExpensesListener) stopExpensesListener();
     expenses = [];
+    tripCreatorUid = null;
+    allowedEmailsCache = [];
     renderExpenses();
+    renderAllowedEmails();
     summary.innerHTML = "";
     return;
   }
@@ -675,6 +731,7 @@ onAuthStateChanged(auth, async (user) => {
     await ensureTripMembersAndSettings();
     initMembers();
     renderRateEditor();
+    renderAllowedEmails();
     startTripListener();
     listenToExpenses();
   } catch (error) {
