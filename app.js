@@ -241,14 +241,12 @@ async function ensureTripMembersAndSettings() {
   const emailAllowed = !!myEmail && allowedEmails.includes(myEmail);
   const isCreator = data.createdBy === currentUser.uid;
 
-  // 自動 claim：email 已白名單 or 係 trip 創建者 -> 自動加 uid
   if (!uidAllowed && (emailAllowed || isCreator)) {
     const nextUids = uniqueStrings([...tripAllowedUids, currentUser.uid]);
     await setDoc(tripRef, { allowedUids: nextUids }, { merge: true });
     tripAllowedUids = nextUids;
   }
 
-  // 最終判斷
   if (!tripAllowedUids.includes(currentUser.uid)) {
     throw Object.assign(new Error("not_allowed"), { code: "permission-denied" });
   }
@@ -265,7 +263,7 @@ async function ensureTripMembersAndSettings() {
       exchangeRates: { ...tripSettings.exchangeRates, ...(data.settings.exchangeRates || {}) }
     };
   } else {
-    await setDoc(getTripDocRef(), { settings: tripSettings }, { merge: true });
+    await setDoc(tripRef, { settings: tripSettings }, { merge: true });
   }
 }
 
@@ -558,6 +556,53 @@ async function ensureTesseract() {
     document.body.appendChild(script);
   });
 }
+
+async function preprocessReceiptImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onerror = reject;
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      const longer = Math.max(img.width, img.height);
+      const scale = longer < 1800 ? 1800 / longer : 1;
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const d = imageData.data;
+
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+        d[i] = d[i + 1] = d[i + 2] = gray;
+      }
+
+      const pixels = [];
+      for (let i = 0; i < d.length; i += 4) pixels.push(d[i]);
+      pixels.sort((a, b) => a - b);
+      const lo = pixels[Math.floor(pixels.length * 0.05)];
+      const hi = pixels[Math.floor(pixels.length * 0.95)];
+      const range = hi - lo || 1;
+
+      for (let i = 0; i < d.length; i += 4) {
+        const v = Math.round(Math.min(255, Math.max(0, (d[i] - lo) / range * 255)));
+        d[i] = d[i + 1] = d[i + 2] = v;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      canvas.toBlob(blob => resolve(blob), "image/png");
+    };
+    img.src = url;
+  });
+}
+
 function normalizeOCRText(raw) { return String(raw || "").replace(/[|]/g, "1").replace(/[Ｏ]/g, "0").replace(/[，]/g, ",").replace(/[：]/g, ":").replace(/\r/g, "").replace(/[ \t]+/g, " ").trim(); }
 function splitLines(text) { return text.split("\n").map(l => l.trim()).filter(Boolean); }
 function parseMoneyFromLine(line) {
@@ -675,9 +720,14 @@ async function runReceiptOCR() {
   const file = ocrFileInput.files?.[0];
   if (!file) return alert("請先選擇收據圖片。");
   try {
-    syncStatus.textContent = "OCR scanning...";
+    syncStatus.textContent = "預處理圖片...";
     await ensureTesseract();
-    const { data } = await window.Tesseract.recognize(file, "eng+chi_tra");
+    const processed = await preprocessReceiptImage(file);
+    syncStatus.textContent = "OCR 辨識中...";
+    const { data } = await window.Tesseract.recognize(processed, "eng+chi_tra", {
+      tessedit_ocr_engine_mode: "1",
+      tessedit_pageseg_mode: "6",
+    });
     const parsed = parseReceiptTextAdvanced(data?.text || "", currencyInput.value || "HKD");
     openAiPreviewModal(parsed);
     syncStatus.textContent = `OCR ready (${tripId})`;
