@@ -118,35 +118,38 @@ function getSettlementPairKey(item) {
   return `${item.from}|${item.to}|${item.currency}`;
 }
 
-function getSettlementPayments(item) {
-  const exactKey = getSettlementKey(item);
-  const pairKey = getSettlementPairKey(item);
-
-  return settlements.filter(record =>
-    record.settlementPairKey === pairKey ||
-    record.settlementKey === exactKey
-  );
-}
-
-function getSettlementPaymentSummary(item) {
-  const records = getSettlementPayments(item);
-  const paidAmount = round2(records.reduce((sum, record) => {
+function getTotalRecordedPayments(currency) {
+  return round2(settlements.reduce((sum, record) => {
+    if (record.currency !== currency) return sum;
     return sum + Number(record.paidAmount ?? record.amount ?? 0);
   }, 0));
+}
 
-  const targetAmount = round2(Number(item.amount || 0));
-  const balanceAmount = round2(Math.max(targetAmount - paidAmount, 0));
+function applyRecordedPaymentsToNet(net, currency) {
+  settlements.forEach(record => {
+    if (record.currency !== currency) return;
 
-  let status = "unpaid";
-  if (paidAmount > 0 && balanceAmount > 0) status = "partial";
-  if (paidAmount > 0 && balanceAmount === 0) status = "paid";
+    const from = record.from;
+    const to = record.to;
+    const paidAmount = Number(record.paidAmount ?? record.amount ?? 0);
 
-  return {
-    records,
-    paidAmount,
-    balanceAmount,
-    status
-  };
+    if (!from || !to || !Number.isFinite(paidAmount) || paidAmount <= 0) return;
+
+    if (!Object.prototype.hasOwnProperty.call(net, from)) net[from] = 0;
+    if (!Object.prototype.hasOwnProperty.call(net, to)) net[to] = 0;
+
+    // A settlement payment is a cash transfer.
+    // Payer's payable position reduces, receiver's receivable position reduces.
+    // If someone overpays, the net position will naturally flip and the next settlement will ask the receiver to pay back the excess.
+    net[from] += paidAmount;
+    net[to] -= paidAmount;
+  });
+
+  Object.keys(net).forEach(person => {
+    net[person] = round2(net[person]);
+  });
+
+  return net;
 }
 
 function getExportFileName() {
@@ -564,89 +567,110 @@ function buildSettlement(net) {
   return settlement;
 }
 
-function calculateSummary() {
+function calculateExpenseNetOnly() {
   const base = tripSettings.baseCurrency;
   const net = {};
   members.forEach(m => { net[m] = 0; });
 
   expenses.forEach(expense => {
     if (!Array.isArray(expense.sharedBy) || !expense.sharedBy.length) return;
-    const converted = Number(expense.convertedAmount ?? convertToBase(expense.originalAmount ?? expense.amount ?? 0, expense.originalCurrency ?? expense.currency ?? base) ?? 0);
+
+    const converted = Number(
+      expense.convertedAmount ??
+      convertToBase(
+        expense.originalAmount ?? expense.amount ?? 0,
+        expense.originalCurrency ?? expense.currency ?? base
+      ) ??
+      0
+    );
+
     if (!Object.prototype.hasOwnProperty.call(net, expense.paidBy)) net[expense.paidBy] = 0;
     net[expense.paidBy] += converted;
+
     const share = converted / expense.sharedBy.length;
+
     expense.sharedBy.forEach(m => {
       if (!Object.prototype.hasOwnProperty.call(net, m)) net[m] = 0;
       net[m] -= share;
     });
   });
 
-  return { net, settlement: buildSettlement(net), currency: base };
+  Object.keys(net).forEach(person => {
+    net[person] = round2(net[person]);
+  });
+
+  return { net, currency: base };
+}
+
+function calculateSummary() {
+  const { net: expenseNet, currency } = calculateExpenseNetOnly();
+  const netAfterPayments = applyRecordedPaymentsToNet({ ...expenseNet }, currency);
+
+  return {
+    expenseNet,
+    net: netAfterPayments,
+    settlement: buildSettlement(netAfterPayments),
+    currency,
+    recordedPaymentsTotal: getTotalRecordedPayments(currency)
+  };
 }
 
 function renderSummary() {
-  const { net, settlement, currency } = calculateSummary();
+  const { expenseNet, net, settlement, currency, recordedPaymentsTotal } = calculateSummary();
 
   const netHtml = Object.entries(net).map(([person, amount]) => {
     const r = round2(amount);
+    const original = round2(expenseNet[person] ?? 0);
     const cls = r > 0 ? "positive" : r < 0 ? "negative" : "neutral";
     const label = r > 0 ? "應收" : r < 0 ? "應付" : "已平數";
-    return `<div class="summary-item"><strong>${safeEscape(person)}</strong><span class="${cls}">${label} ${currency} ${Math.abs(r).toFixed(2)}</span></div>`;
+    const originalText = original === r
+      ? ""
+      : `<div class="expense-meta">原本：${original > 0 ? "應收" : original < 0 ? "應付" : "已平數"} ${currency} ${Math.abs(original).toFixed(2)}，已計入找數紀錄</div>`;
+
+    return `
+      <div class="summary-item">
+        <strong>${safeEscape(person)}</strong>
+        <span class="${cls}">${label} ${currency} ${Math.abs(r).toFixed(2)}</span>
+        ${originalText}
+      </div>
+    `;
   }).join("");
 
   const settlementHtml = settlement.length
     ? settlement.map(item => {
-        const settlementItem = { ...item, currency };
-        const key = getSettlementKey(settlementItem);
-        const pairKey = getSettlementPairKey(settlementItem);
-        const paymentSummary = getSettlementPaymentSummary(settlementItem);
-
-        const statusHtml = (() => {
-          if (paymentSummary.status === "paid") {
-            return `<span class="paid-badge">已找清 · 已找 ${currency} ${paymentSummary.paidAmount.toFixed(2)}</span>`;
-          }
-          if (paymentSummary.status === "partial") {
-            return `<span class="partial-badge">部分已找 · 已找 ${currency} ${paymentSummary.paidAmount.toFixed(2)} · 尚欠 ${currency} ${paymentSummary.balanceAmount.toFixed(2)}</span>`;
-          }
-          return `<span class="unpaid-badge">未找數</span>`;
-        })();
-
-        const actionHtml = paymentSummary.balanceAmount > 0
-          ? `
-            <div class="settlement-payment-row">
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                max="${paymentSummary.balanceAmount.toFixed(2)}"
-                placeholder="輸入已找金額"
-                data-payment-input="${safeEscape(pairKey)}"
-              />
-              <button
-                type="button"
-                class="settle-btn"
-                data-record-payment="${safeEscape(pairKey)}"
-                data-settlement-key="${safeEscape(key)}"
-                data-from="${safeEscape(item.from)}"
-                data-to="${safeEscape(item.to)}"
-                data-amount="${Number(item.amount).toFixed(2)}"
-                data-currency="${safeEscape(currency)}"
-                data-balance="${paymentSummary.balanceAmount.toFixed(2)}"
-              >記錄找數</button>
-            </div>
-          `
-          : `<button type="button" class="settle-btn secondary-btn" disabled>已找清</button>`;
+        const key = getSettlementKey({ ...item, currency });
+        const pairKey = getSettlementPairKey({ ...item, currency });
 
         return `
           <div class="settlement-item">
             <div><strong>${safeEscape(item.from)}</strong> pays <strong>${safeEscape(item.to)}</strong> <span class="negative">${currency} ${Number(item.amount).toFixed(2)}</span></div>
-            <div class="settlement-progress">已找 ${currency} ${paymentSummary.paidAmount.toFixed(2)} / ${currency} ${Number(item.amount).toFixed(2)}</div>
-            <div class="settlement-status">${statusHtml}</div>
-            <div class="settlement-actions">${actionHtml}</div>
+            <div class="settlement-status"><span class="unpaid-badge">尚欠，已扣除已找數紀錄</span></div>
+            <div class="settlement-actions">
+              <div class="settlement-payment-row">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="輸入今次找數金額"
+                  data-payment-input="${safeEscape(pairKey)}"
+                />
+                <button
+                  type="button"
+                  class="settle-btn"
+                  data-record-payment="${safeEscape(pairKey)}"
+                  data-settlement-key="${safeEscape(key)}"
+                  data-from="${safeEscape(item.from)}"
+                  data-to="${safeEscape(item.to)}"
+                  data-amount="${Number(item.amount).toFixed(2)}"
+                  data-currency="${safeEscape(currency)}"
+                  data-balance="${Number(item.amount).toFixed(2)}"
+                >記錄找數</button>
+              </div>
+            </div>
           </div>
         `;
       }).join("")
-    : `<p class="neutral">暫時無需結算。</p>`;
+    : `<p class="neutral">暫時無需結算，已計入支出及找數紀錄。</p>`;
 
   const paidHistoryHtml = settlements.length
     ? settlements.map(item => {
@@ -663,9 +687,10 @@ function renderSummary() {
     : `<p class="neutral">暫時未有已找數紀錄。</p>`;
 
   summary.innerHTML = `
-    <h3>每人淨額（${currency}）</h3>
+    <h3>每人淨額（${currency}，已計入找數）</h3>
+    <p class="hint">已找數總額：${currency} ${recordedPaymentsTotal.toFixed(2)}。如有人找多咗，系統會自動反映為對方要找返。</p>
     ${netHtml}
-    <h3>建議結算</h3>
+    <h3>建議結算（剩餘應找）</h3>
     ${settlementHtml}
     <h3>已找數紀錄</h3>
     ${paidHistoryHtml}
@@ -740,7 +765,7 @@ async function ensureSheetJs() {
 }
 
 function exportWorkbook() {
-  const { net, settlement, currency } = calculateSummary();
+  const { expenseNet, net, settlement, currency, recordedPaymentsTotal } = calculateSummary();
 
   const expensesRows = expenses.map(expense => ({
     Date: expense.date || "",
@@ -762,11 +787,18 @@ function exportWorkbook() {
 
   const summaryRows = Object.entries(net).map(([person, amount]) => {
     const rounded = round2(amount);
+    const original = round2(expenseNet[person] ?? 0);
+    const paymentEffect = round2(rounded - original);
+
     return {
       Person: person,
-      Status: rounded > 0 ? "Receivable" : rounded < 0 ? "Payable" : "Settled",
+      OriginalStatusBeforePayments: original > 0 ? "Receivable" : original < 0 ? "Payable" : "Settled",
+      OriginalAmountBeforePayments: Math.abs(original),
+      PaymentEffect: paymentEffect,
+      FinalStatusAfterPayments: rounded > 0 ? "Receivable" : rounded < 0 ? "Payable" : "Settled",
+      FinalAmountAfterPayments: Math.abs(rounded),
       Currency: currency,
-      Amount: Math.abs(rounded)
+      RecordedPaymentsTotal: recordedPaymentsTotal
     };
   });
 
@@ -774,15 +806,13 @@ function exportWorkbook() {
     const row = { ...item, currency };
     const key = getSettlementKey(row);
     const pairKey = getSettlementPairKey(row);
-    const paymentSummary = getSettlementPaymentSummary(row);
+
     return {
       From: item.from,
       To: item.to,
       Currency: currency,
-      RecommendedAmount: Number(item.amount),
-      PaidAmount: paymentSummary.paidAmount,
-      BalanceAmount: paymentSummary.balanceAmount,
-      Status: paymentSummary.status === "paid" ? "Paid" : paymentSummary.status === "partial" ? "Partial" : "Unpaid",
+      RemainingAmountToPay: Number(item.amount),
+      Status: "Outstanding after recorded payments",
       SettlementKey: key,
       SettlementPairKey: pairKey
     };
