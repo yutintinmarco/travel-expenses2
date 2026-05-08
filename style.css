@@ -227,6 +227,14 @@ button {
   font-size: 13px;
 }
 
+/* auth buttons */
+.auth-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* OCR preview modal */
 .modal {
   position: fixed;
