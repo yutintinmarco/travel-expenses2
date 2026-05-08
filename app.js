@@ -35,14 +35,7 @@ const provider = new GoogleAuthProvider();
 let members = [];
 let tripSettings = {
   baseCurrency: "HKD",
-  exchangeRates: {
-    HKD: 1,
-    JPY: 0.055,
-    CNY: 1.08,
-    TWD: 0.24,
-    KRW: 0.0058,
-    USD: 7.8
-  }
+  exchangeRates: { HKD: 1, JPY: 0.055, CNY: 1.08, TWD: 0.24, KRW: 0.0058, USD: 7.8 }
 };
 
 const form = document.getElementById("expenseForm");
@@ -59,7 +52,6 @@ const expenseList = document.getElementById("expenseList");
 const summary = document.getElementById("summary");
 const submitBtn = document.getElementById("submitBtn");
 const cancelEditBtn = document.getElementById("cancelEditBtn");
-
 const memberList = document.getElementById("memberList");
 const memberNameInput = document.getElementById("memberNameInput");
 const addMemberBtn = document.getElementById("addMemberBtn");
@@ -89,55 +81,52 @@ const adminPanel = document.getElementById("adminPanel");
 const allowedEmailList = document.getElementById("allowedEmailList");
 const allowedEmailInput = document.getElementById("allowedEmailInput");
 const addAllowedEmailBtn = document.getElementById("addAllowedEmailBtn");
+const exportExcelBtn = document.getElementById("exportExcelBtn");
 
 let currentUser = null;
 let expenses = [];
+let settlements = [];
 let editingExpenseId = null;
 let stopTripListener = null;
 let stopExpensesListener = null;
+let stopSettlementsListener = null;
 let tripAllowedUids = [];
 let tripCreatorUid = null;
 let allowedEmailsCache = [];
 
 /* utils */
 const safeEscape = (text) => String(text ?? "")
-  .replaceAll("&", "&amp;")
-  .replaceAll("<", "&lt;")
-  .replaceAll(">", "&gt;")
-  .replaceAll('"', "&quot;")
-  .replaceAll("'", "&#39;");
-
+  .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const getTripDocRef = () => doc(db, "trips", tripId);
 const getExpensesCollection = () => collection(db, "trips", tripId, "expenses");
+const getSettlementsCollection = () => collection(db, "trips", tripId, "settlements");
 const uniqueStrings = (arr) => [...new Set((arr || []).filter(Boolean).map(v => String(v)))];
 const normalizeEmail = (e) => String(e || "").trim().toLowerCase();
 
 function getCurrentUserDisplayName() {
   if (!currentUser) return "未知用戶";
-
-  return currentUser.displayName
-    || currentUser.email
-    || currentUser.uid.slice(0, 7) + "…";
+  return currentUser.displayName || currentUser.email || currentUser.uid.slice(0, 7) + "…";
 }
 
-function setToday() {
-  dateInput.value = new Date().toISOString().slice(0, 10);
+function getSettlementKey(item) {
+  return `${item.from}|${item.to}|${item.currency}|${Number(item.amount).toFixed(2)}`;
 }
 
-function getSelectedParticipants() {
-  return Array.from(sharedByGroup.querySelectorAll("input:checked")).map(i => i.value);
+function getPaidSettlementForKey(key) {
+  return settlements.find(item => item.settlementKey === key && item.status === "paid") || null;
 }
 
-function getRateFor(currency) {
-  const r = tripSettings.exchangeRates?.[currency];
-  return Number.isFinite(Number(r)) && Number(r) > 0 ? Number(r) : null;
+function getExportFileName() {
+  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  return `trip-expenses-${tripId}-${date}.xlsx`;
 }
 
-function convertToBase(amount, currency) {
-  const rate = getRateFor(currency);
-  return rate ? round2(Number(amount) * rate) : null;
-}
+function setToday() { dateInput.value = new Date().toISOString().slice(0, 10); }
+function getSelectedParticipants() { return Array.from(sharedByGroup.querySelectorAll("input:checked")).map(i => i.value); }
+function getRateFor(currency) { const r = tripSettings.exchangeRates?.[currency]; return Number.isFinite(Number(r)) && Number(r) > 0 ? Number(r) : null; }
+function convertToBase(amount, currency) { const rate = getRateFor(currency); return rate ? round2(Number(amount) * rate) : null; }
 
 function setAuthUI(user) {
   if (user) {
@@ -156,14 +145,12 @@ async function handleGoogleSignIn() {
     await signInWithPopup(auth, provider);
   } catch (error) {
     console.error("Google popup login error:", error?.code, error?.message, error);
-
     const popupRelated = [
       "auth/popup-blocked",
       "auth/popup-closed-by-user",
       "auth/cancelled-popup-request",
       "auth/operation-not-supported-in-this-environment"
     ];
-
     if (popupRelated.includes(error?.code)) {
       try {
         await signInWithRedirect(auth, provider);
@@ -174,7 +161,6 @@ async function handleGoogleSignIn() {
         return;
       }
     }
-
     alert(`Google 登入失敗：${error?.code || "unknown"}`);
   }
 }
@@ -202,23 +188,18 @@ function renderMemberManager() {
 }
 
 function initMembers() {
-  paidByInput.innerHTML = members
-    .map(member => `<option value="${safeEscape(member)}">${safeEscape(member)}</option>`)
-    .join("");
-
+  paidByInput.innerHTML = members.map(member => `<option value="${safeEscape(member)}">${safeEscape(member)}</option>`).join("");
   sharedByGroup.innerHTML = members.map(member => `
     <label class="checkbox-item">
       <input type="checkbox" value="${safeEscape(member)}" checked />
       ${safeEscape(member)}
     </label>
   `).join("");
-
   renderMemberManager();
 }
 
 function renderRateEditor() {
   if (!baseCurrencyInput || !ratesContainer) return;
-
   baseCurrencyInput.value = tripSettings.baseCurrency || "HKD";
   const currencyOptions = Array.from(currencyInput.options).map(o => o.value);
 
@@ -226,45 +207,25 @@ function renderRateEditor() {
     const value = tripSettings.exchangeRates?.[code] ?? "";
     const disabled = code === tripSettings.baseCurrency ? "disabled" : "";
     const hint = code === tripSettings.baseCurrency ? "(base=1)" : "";
-
-    return `
-      <label class="rate-row">
-        <span>${code} ${hint}</span>
-        <input type="number" step="0.0001" min="0" data-rate-code="${code}" value="${value}" ${disabled}/>
-      </label>
-    `;
+    return `<label class="rate-row"><span>${code} ${hint}</span><input type="number" step="0.0001" min="0" data-rate-code="${code}" value="${value}" ${disabled}/></label>`;
   }).join("");
 }
 
 async function saveTripSettings() {
   const newBase = baseCurrencyInput.value;
   const nextRates = {};
-
   ratesContainer.querySelectorAll("[data-rate-code]").forEach(input => {
     const code = input.dataset.rateCode;
     const n = Number(input.value);
-
-    if (code === newBase) {
-      nextRates[code] = 1;
-    } else if (Number.isFinite(n) && n > 0) {
-      nextRates[code] = n;
-    }
+    if (code === newBase) nextRates[code] = 1;
+    else if (Number.isFinite(n) && n > 0) nextRates[code] = n;
   });
-
   if (!nextRates[newBase]) nextRates[newBase] = 1;
-
-  tripSettings = {
-    ...tripSettings,
-    baseCurrency: newBase,
-    exchangeRates: nextRates
-  };
+  tripSettings = { ...tripSettings, baseCurrency: newBase, exchangeRates: nextRates };
 
   await setDoc(getTripDocRef(), { settings: tripSettings }, { merge: true });
-
   alert("匯率設定已儲存。");
-  renderRateEditor();
-  renderSummary();
-  renderExpenses();
+  renderRateEditor(); renderSummary(); renderExpenses();
 }
 
 async function ensureTripMembersAndSettings() {
@@ -275,7 +236,6 @@ async function ensureTripMembersAndSettings() {
     members = [currentUser.displayName || "Me"];
     tripAllowedUids = [currentUser.uid];
     tripCreatorUid = currentUser.uid;
-
     const myEmail = normalizeEmail(currentUser.email);
     allowedEmailsCache = myEmail ? [myEmail] : [];
 
@@ -287,40 +247,35 @@ async function ensureTripMembersAndSettings() {
       createdAt: serverTimestamp(),
       createdBy: currentUser.uid
     }, { merge: true });
-
     return;
   }
 
   const data = tripDoc.data();
-
   tripAllowedUids = Array.isArray(data.allowedUids) ? uniqueStrings(data.allowedUids) : [];
   tripCreatorUid = data.createdBy || null;
-
   const allowedEmails = Array.isArray(data.allowedEmails)
     ? data.allowedEmails.map(normalizeEmail).filter(Boolean)
     : [];
-
   allowedEmailsCache = allowedEmails;
 
   const myEmail = normalizeEmail(currentUser.email);
   const uidAllowed = tripAllowedUids.includes(currentUser.uid);
   const emailAllowed = !!myEmail && allowedEmails.includes(myEmail);
-  const isCreatorUser = data.createdBy === currentUser.uid;
+  const isCreator = data.createdBy === currentUser.uid;
 
-  if (!uidAllowed && (emailAllowed || isCreatorUser)) {
+  // 自動 claim：email 已白名單 or 係 trip 創建者 -> 自動加 uid
+  if (!uidAllowed && (emailAllowed || isCreator)) {
     const nextUids = uniqueStrings([...tripAllowedUids, currentUser.uid]);
     await setDoc(tripRef, { allowedUids: nextUids }, { merge: true });
     tripAllowedUids = nextUids;
   }
 
+  // 最終判斷
   if (!tripAllowedUids.includes(currentUser.uid)) {
     throw Object.assign(new Error("not_allowed"), { code: "permission-denied" });
   }
 
-  members = Array.isArray(data.members) && data.members.length > 0
-    ? data.members
-    : [currentUser.displayName || "Me"];
-
+  members = Array.isArray(data.members) && data.members.length > 0 ? data.members : [currentUser.displayName || "Me"];
   if (!Array.isArray(data.members) || data.members.length === 0) {
     await setDoc(tripRef, { members }, { merge: true });
   }
@@ -329,10 +284,7 @@ async function ensureTripMembersAndSettings() {
     tripSettings = {
       ...tripSettings,
       ...data.settings,
-      exchangeRates: {
-        ...tripSettings.exchangeRates,
-        ...(data.settings.exchangeRates || {})
-      }
+      exchangeRates: { ...tripSettings.exchangeRates, ...(data.settings.exchangeRates || {}) }
     };
   } else {
     await setDoc(tripRef, { settings: tripSettings }, { merge: true });
@@ -344,31 +296,20 @@ function startTripListener() {
 
   stopTripListener = onSnapshot(getTripDocRef(), snap => {
     if (!snap.exists()) return;
-
     const data = snap.data();
 
     if (Array.isArray(data.members) && data.members.length > 0) {
       const changed = JSON.stringify(data.members) !== JSON.stringify(members);
-
       if (changed) {
         const prev = paidByInput.value;
         members = data.members;
         initMembers();
-
-        if (members.includes(prev)) {
-          paidByInput.value = prev;
-        }
+        if (members.includes(prev)) paidByInput.value = prev;
       }
     }
 
-    if (Array.isArray(data.allowedUids)) {
-      tripAllowedUids = uniqueStrings(data.allowedUids);
-    }
-
-    if (data.createdBy) {
-      tripCreatorUid = data.createdBy;
-    }
-
+    if (Array.isArray(data.allowedUids)) tripAllowedUids = uniqueStrings(data.allowedUids);
+    if (data.createdBy) tripCreatorUid = data.createdBy;
     if (Array.isArray(data.allowedEmails)) {
       allowedEmailsCache = data.allowedEmails.map(normalizeEmail).filter(Boolean);
       renderAllowedEmails();
@@ -378,19 +319,12 @@ function startTripListener() {
       tripSettings = {
         ...tripSettings,
         ...data.settings,
-        exchangeRates: {
-          ...tripSettings.exchangeRates,
-          ...(data.settings.exchangeRates || {})
-        }
+        exchangeRates: { ...tripSettings.exchangeRates, ...(data.settings.exchangeRates || {}) }
       };
-
-      renderRateEditor();
-      renderSummary();
-      renderExpenses();
+      renderRateEditor(); renderSummary(); renderExpenses();
     }
   }, err => {
     console.error(err);
-
     if (err?.code === "permission-denied") {
       syncStatus.textContent = "No access to this trip";
       alert("你無權限進入此 trip。");
@@ -400,35 +334,32 @@ function startTripListener() {
 
 function listenToExpenses() {
   if (stopExpensesListener) stopExpensesListener();
-
   const q = query(getExpensesCollection(), orderBy("date", "desc"));
-
   stopExpensesListener = onSnapshot(q, snap => {
-    expenses = snap.docs.map(d => ({
-      id: d.id,
-      ...d.data()
-    }));
-
-    renderExpenses();
-    renderSummary();
-
+    expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderExpenses(); renderSummary();
     syncStatus.textContent = `Synced (${tripId})`;
   }, err => {
     console.error(err);
-    syncStatus.textContent = err?.code === "permission-denied"
-      ? "No access to expenses"
-      : "Sync error";
+    syncStatus.textContent = err?.code === "permission-denied" ? "No access to expenses" : "Sync error";
+  });
+}
+
+function listenToSettlements() {
+  if (stopSettlementsListener) stopSettlementsListener();
+  const q = query(getSettlementsCollection(), orderBy("paidAt", "desc"));
+  stopSettlementsListener = onSnapshot(q, snap => {
+    settlements = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderSummary();
+  }, err => {
+    console.error(err);
+    syncStatus.textContent = err?.code === "permission-denied" ? "No access to settlements" : "Settlement sync error";
   });
 }
 
 function resetExpenseForm() {
-  form.reset();
-  setToday();
-
-  Array.from(sharedByGroup.querySelectorAll("input")).forEach(i => {
-    i.checked = true;
-  });
-
+  form.reset(); setToday();
+  Array.from(sharedByGroup.querySelectorAll("input")).forEach(i => i.checked = true);
   editingExpenseId = null;
   submitBtn.textContent = "新增";
   cancelEditBtn.classList.add("hidden");
@@ -437,13 +368,8 @@ function resetExpenseForm() {
 
 function enterEditMode(expenseId) {
   const expense = expenses.find(item => item.id === expenseId);
-
-  if (!expense) {
-    return alert("搵唔到呢筆支出。");
-  }
-
+  if (!expense) return alert("搵唔到呢筆支出。");
   editingExpenseId = expense.id;
-
   dateInput.value = expense.date || "";
   titleInput.value = expense.title || "";
   amountInput.value = expense.originalAmount || expense.amount || "";
@@ -453,9 +379,7 @@ function enterEditMode(expenseId) {
   noteInput.value = expense.note || "";
 
   Array.from(sharedByGroup.querySelectorAll("input")).forEach(input => {
-    input.checked = Array.isArray(expense.sharedBy)
-      ? expense.sharedBy.includes(input.value)
-      : false;
+    input.checked = Array.isArray(expense.sharedBy) ? expense.sharedBy.includes(input.value) : false;
   });
 
   submitBtn.textContent = "儲存修改";
@@ -466,35 +390,22 @@ function enterEditMode(expenseId) {
   notice.id = "editingNotice";
   notice.className = "editing-notice";
   notice.textContent = `正在編輯：${expense.title}`;
-
   form.prepend(notice);
 }
 
 async function saveExpense(event) {
   event.preventDefault();
-
-  if (!currentUser) {
-    return alert("請先登入。");
-  }
+  if (!currentUser) return alert("請先登入。");
 
   const participants = getSelectedParticipants();
-
-  if (participants.length === 0) {
-    return alert("請至少選擇一位參與人。");
-  }
+  if (participants.length === 0) return alert("請至少選擇一位參與人。");
 
   const originalAmount = Number(amountInput.value);
-
-  if (!Number.isFinite(originalAmount) || originalAmount <= 0) {
-    return alert("請輸入有效金額。");
-  }
+  if (!Number.isFinite(originalAmount) || originalAmount <= 0) return alert("請輸入有效金額。");
 
   const originalCurrency = currencyInput.value;
   const convertedAmount = convertToBase(originalAmount, originalCurrency);
-
-  if (convertedAmount === null) {
-    return alert(`未有 ${originalCurrency} 匯率。`);
-  }
+  if (convertedAmount === null) return alert(`未有 ${originalCurrency} 匯率。`);
 
   const displayName = getCurrentUserDisplayName();
 
@@ -517,9 +428,7 @@ async function saveExpense(event) {
     updatedAt: serverTimestamp()
   };
 
-  if (!payload.title) {
-    return alert("請輸入項目名稱。");
-  }
+  if (!payload.title) return alert("請輸入項目名稱。");
 
   if (editingExpenseId) {
     await updateDoc(doc(db, "trips", tripId, "expenses", editingExpenseId), payload);
@@ -537,230 +446,111 @@ async function saveExpense(event) {
 
 async function removeExpense(expenseId) {
   if (!confirm("確定刪除？")) return;
-
-  if (editingExpenseId === expenseId) {
-    resetExpenseForm();
-  }
-
+  if (editingExpenseId === expenseId) resetExpenseForm();
   await deleteDoc(doc(db, "trips", tripId, "expenses", expenseId));
 }
 
 async function addMember() {
   const name = memberNameInput.value.trim();
-
-  if (!name) {
-    return alert("請輸入成員名稱。");
-  }
-
-  if (members.some(m => m.toLowerCase() === name.toLowerCase())) {
-    return alert("成員名稱已存在。");
-  }
-
+  if (!name) return alert("請輸入成員名稱。");
+  if (members.some(m => m.toLowerCase() === name.toLowerCase())) return alert("成員名稱已存在。");
   const next = [...members, name];
-
   await setDoc(getTripDocRef(), { members: next }, { merge: true });
-
-  members = next;
-  initMembers();
-  memberNameInput.value = "";
+  members = next; initMembers(); memberNameInput.value = "";
 }
 
 async function removeMember(name) {
-  if (members.length <= 1) {
-    return alert("至少要保留一位成員。");
-  }
-
-  const used = expenses.some(e =>
-    e.paidBy === name || (Array.isArray(e.sharedBy) && e.sharedBy.includes(name))
-  );
-
-  if (used) {
-    return alert("此成員已出現在歷史支出，不能移除。");
-  }
-
+  if (members.length <= 1) return alert("至少要保留一位成員。");
+  const used = expenses.some(e => e.paidBy === name || (Array.isArray(e.sharedBy) && e.sharedBy.includes(name)));
+  if (used) return alert("此成員已出現在歷史支出，不能移除。");
   const next = members.filter(m => m !== name);
-
   await setDoc(getTripDocRef(), { members: next }, { merge: true });
-
-  members = next;
-  initMembers();
+  members = next; initMembers();
 }
 
 function formatAuditUid(uid) {
   if (!uid) return "未知";
-
-  if (currentUser && uid === currentUser.uid) {
-    return "你";
-  }
-
+  if (currentUser && uid === currentUser.uid) return "你";
   return uid.slice(0, 7) + "…";
 }
 
 function formatTimestamp(ts) {
   if (!ts) return "時間未記錄";
-
   const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
-
   if (isNaN(d)) return "時間未記錄";
-
-  return d.toLocaleString("zh-HK", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+  return d.toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function renderExpenses() {
-  if (!expenses.length) {
-    expenseList.innerHTML = `<p class="neutral">暫時未有支出。</p>`;
-    return;
-  }
-
+  if (!expenses.length) return expenseList.innerHTML = `<p class="neutral">暫時未有支出。</p>`;
   const base = tripSettings.baseCurrency;
 
   expenseList.innerHTML = expenses.map(expense => {
     const oAmt = Number(expense.originalAmount ?? expense.amount ?? 0);
     const oCur = expense.originalCurrency ?? expense.currency ?? base;
     const cAmt = Number(expense.convertedAmount ?? convertToBase(oAmt, oCur) ?? 0);
-    const shareText = Array.isArray(expense.sharedBy)
-      ? expense.sharedBy.map(safeEscape).join(", ")
-      : "-";
-
+    const shareText = Array.isArray(expense.sharedBy) ? expense.sharedBy.map(safeEscape).join(", ") : "-";
     const createdName = expense.createdByName || formatAuditUid(expense.createdBy);
     const updatedName = expense.updatedByName || formatAuditUid(expense.updatedBy);
-
     return `
       <div class="expense-item">
-        <div class="expense-title">
-          ${safeEscape(expense.title)} · ${safeEscape(oCur)} ${oAmt.toFixed(2)}
-        </div>
-
-        <div class="expense-meta">
-          換算：${safeEscape(base)} ${cAmt.toFixed(2)}
-        </div>
-
-        <div class="expense-meta">
-          ${safeEscape(expense.date)} · Paid by ${safeEscape(expense.paidBy)} · Shared by ${shareText}
-        </div>
-
-        <div class="expense-meta">
-          ${safeEscape(expense.category)}${expense.note ? ` · ${safeEscape(expense.note)}` : ""}
-        </div>
-
+        <div class="expense-title">${safeEscape(expense.title)} · ${safeEscape(oCur)} ${oAmt.toFixed(2)}</div>
+        <div class="expense-meta">換算：${safeEscape(base)} ${cAmt.toFixed(2)}</div>
+        <div class="expense-meta">${safeEscape(expense.date)} · Paid by ${safeEscape(expense.paidBy)} · Shared by ${shareText}</div>
+        <div class="expense-meta">${safeEscape(expense.category)}${expense.note ? ` · ${safeEscape(expense.note)}` : ""}</div>
         <div class="expense-audit">
           <div>建立：${safeEscape(createdName)} · ${formatTimestamp(expense.createdAt)}</div>
           <div>更新：${safeEscape(updatedName)} · ${formatTimestamp(expense.updatedAt)}</div>
         </div>
-
         <button class="edit-btn" data-edit-id="${safeEscape(expense.id)}">Edit</button>
         <button class="delete-btn" data-delete-id="${safeEscape(expense.id)}">Delete</button>
       </div>
     `;
   }).join("");
 
-  expenseList.querySelectorAll("[data-edit-id]").forEach(btn => {
-    btn.addEventListener("click", () => enterEditMode(btn.dataset.editId));
-  });
-
-  expenseList.querySelectorAll("[data-delete-id]").forEach(btn => {
-    btn.addEventListener("click", () => removeExpense(btn.dataset.deleteId));
-  });
+  expenseList.querySelectorAll("[data-edit-id]").forEach(btn => btn.addEventListener("click", () => enterEditMode(btn.dataset.editId)));
+  expenseList.querySelectorAll("[data-delete-id]").forEach(btn => btn.addEventListener("click", () => removeExpense(btn.dataset.deleteId)));
 }
 
 function buildSettlement(net) {
-  const debtors = [];
-  const creditors = [];
-
+  const debtors = [], creditors = [];
   Object.entries(net).forEach(([person, amount]) => {
     const r = round2(amount);
-
-    if (r < 0) {
-      debtors.push({
-        person,
-        amount: Math.abs(r)
-      });
-    }
-
-    if (r > 0) {
-      creditors.push({
-        person,
-        amount: r
-      });
-    }
+    if (r < 0) debtors.push({ person, amount: Math.abs(r) });
+    if (r > 0) creditors.push({ person, amount: r });
   });
-
   const settlement = [];
-
-  let i = 0;
-  let j = 0;
-
+  let i = 0, j = 0;
   while (i < debtors.length && j < creditors.length) {
     const pay = Math.min(debtors[i].amount, creditors[j].amount);
     const rpay = round2(pay);
-
-    if (rpay > 0) {
-      settlement.push({
-        from: debtors[i].person,
-        to: creditors[j].person,
-        amount: rpay
-      });
-    }
-
+    if (rpay > 0) settlement.push({ from: debtors[i].person, to: creditors[j].person, amount: rpay });
     debtors[i].amount = round2(debtors[i].amount - pay);
     creditors[j].amount = round2(creditors[j].amount - pay);
-
     if (debtors[i].amount === 0) i++;
     if (creditors[j].amount === 0) j++;
   }
-
   return settlement;
 }
 
 function calculateSummary() {
   const base = tripSettings.baseCurrency;
   const net = {};
-
-  members.forEach(m => {
-    net[m] = 0;
-  });
+  members.forEach(m => { net[m] = 0; });
 
   expenses.forEach(expense => {
-    if (!Array.isArray(expense.sharedBy) || !expense.sharedBy.length) {
-      return;
-    }
-
-    const converted = Number(
-      expense.convertedAmount ??
-      convertToBase(
-        expense.originalAmount ?? expense.amount ?? 0,
-        expense.originalCurrency ?? expense.currency ?? base
-      ) ??
-      0
-    );
-
-    if (!Object.prototype.hasOwnProperty.call(net, expense.paidBy)) {
-      net[expense.paidBy] = 0;
-    }
-
+    if (!Array.isArray(expense.sharedBy) || !expense.sharedBy.length) return;
+    const converted = Number(expense.convertedAmount ?? convertToBase(expense.originalAmount ?? expense.amount ?? 0, expense.originalCurrency ?? expense.currency ?? base) ?? 0);
+    if (!Object.prototype.hasOwnProperty.call(net, expense.paidBy)) net[expense.paidBy] = 0;
     net[expense.paidBy] += converted;
-
     const share = converted / expense.sharedBy.length;
-
     expense.sharedBy.forEach(m => {
-      if (!Object.prototype.hasOwnProperty.call(net, m)) {
-        net[m] = 0;
-      }
-
+      if (!Object.prototype.hasOwnProperty.call(net, m)) net[m] = 0;
       net[m] -= share;
     });
   });
 
-  return {
-    net,
-    settlement: buildSettlement(net),
-    currency: base
-  };
+  return { net, settlement: buildSettlement(net), currency: base };
 }
 
 function renderSummary() {
@@ -770,30 +560,179 @@ function renderSummary() {
     const r = round2(amount);
     const cls = r > 0 ? "positive" : r < 0 ? "negative" : "neutral";
     const label = r > 0 ? "應收" : r < 0 ? "應付" : "已平數";
-
-    return `
-      <div class="summary-item">
-        <strong>${safeEscape(person)}</strong>
-        <span class="${cls}">${label} ${currency} ${Math.abs(r).toFixed(2)}</span>
-      </div>
-    `;
+    return `<div class="summary-item"><strong>${safeEscape(person)}</strong><span class="${cls}">${label} ${currency} ${Math.abs(r).toFixed(2)}</span></div>`;
   }).join("");
 
   const settlementHtml = settlement.length
-    ? settlement.map(s => `
-        <div class="settlement-item">
-          <strong>${safeEscape(s.from)}</strong> pays <strong>${safeEscape(s.to)}</strong>
-          <span class="negative">${currency} ${s.amount.toFixed(2)}</span>
+    ? settlement.map(item => {
+        const settlementItem = { ...item, currency };
+        const key = getSettlementKey(settlementItem);
+        const paid = getPaidSettlementForKey(key);
+        const statusHtml = paid
+          ? `<span class="paid-badge">已找數 · ${safeEscape(paid.markedByName || formatAuditUid(paid.markedBy))} · ${formatTimestamp(paid.paidAt)}</span>`
+          : `<span class="unpaid-badge">未找數</span>`;
+        const actionHtml = paid
+          ? `<button type="button" class="settle-btn secondary-btn" data-unpay-id="${safeEscape(paid.id)}">取消已找數</button>`
+          : `<button type="button" class="settle-btn" data-settlement-key="${safeEscape(key)}" data-from="${safeEscape(item.from)}" data-to="${safeEscape(item.to)}" data-amount="${Number(item.amount).toFixed(2)}" data-currency="${safeEscape(currency)}">標記已找數</button>`;
+
+        return `
+          <div class="settlement-item">
+            <div><strong>${safeEscape(item.from)}</strong> pays <strong>${safeEscape(item.to)}</strong> <span class="negative">${currency} ${Number(item.amount).toFixed(2)}</span></div>
+            <div class="settlement-status">${statusHtml}</div>
+            <div class="settlement-actions">${actionHtml}</div>
+          </div>
+        `;
+      }).join("")
+    : `<p class="neutral">暫時無需結算。</p>`;
+
+  const paidHistoryHtml = settlements.length
+    ? settlements.map(item => `
+        <div class="settlement-item paid-history-item">
+          <div><strong>${safeEscape(item.from)}</strong> paid <strong>${safeEscape(item.to)}</strong> ${safeEscape(item.currency)} ${Number(item.amount || 0).toFixed(2)}</div>
+          <div class="expense-meta">標記：${safeEscape(item.markedByName || formatAuditUid(item.markedBy))} · ${formatTimestamp(item.paidAt)}</div>
         </div>
       `).join("")
-    : `<p class="neutral">暫時無需結算。</p>`;
+    : `<p class="neutral">暫時未有已找數紀錄。</p>`;
 
   summary.innerHTML = `
     <h3>每人淨額（${currency}）</h3>
     ${netHtml}
     <h3>建議結算</h3>
     ${settlementHtml}
+    <h3>已找數紀錄</h3>
+    ${paidHistoryHtml}
   `;
+
+  summary.querySelectorAll("[data-settlement-key]").forEach(btn => {
+    btn.addEventListener("click", () => markSettlementPaid({
+      settlementKey: btn.dataset.settlementKey,
+      from: btn.dataset.from,
+      to: btn.dataset.to,
+      amount: Number(btn.dataset.amount),
+      currency: btn.dataset.currency
+    }));
+  });
+
+  summary.querySelectorAll("[data-unpay-id]").forEach(btn => {
+    btn.addEventListener("click", () => cancelSettlementPaid(btn.dataset.unpayId));
+  });
+}
+
+async function markSettlementPaid(item) {
+  if (!currentUser) return alert("請先登入。");
+
+  const existing = getPaidSettlementForKey(item.settlementKey);
+  if (existing) return alert("呢筆已經標記為已找數。");
+
+  if (!confirm(`${item.from} 已找 ${item.to} ${item.currency} ${Number(item.amount).toFixed(2)}？`)) return;
+
+  await addDoc(getSettlementsCollection(), {
+    settlementKey: item.settlementKey,
+    from: item.from,
+    to: item.to,
+    amount: Number(item.amount),
+    currency: item.currency,
+    status: "paid",
+    markedBy: currentUser.uid,
+    markedByName: getCurrentUserDisplayName(),
+    paidAt: serverTimestamp()
+  });
+}
+
+async function cancelSettlementPaid(settlementId) {
+  if (!confirm("取消此已找數標記？")) return;
+  await deleteDoc(doc(db, "trips", tripId, "settlements", settlementId));
+}
+
+async function ensureSheetJs() {
+  if (window.XLSX) return;
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    script.onload = resolve;
+    script.onerror = reject;
+    document.body.appendChild(script);
+  });
+}
+
+function exportWorkbook() {
+  const { net, settlement, currency } = calculateSummary();
+
+  const expensesRows = expenses.map(expense => ({
+    Date: expense.date || "",
+    Item: expense.title || "",
+    Category: expense.category || "",
+    OriginalCurrency: expense.originalCurrency || expense.currency || "",
+    OriginalAmount: Number(expense.originalAmount ?? expense.amount ?? 0),
+    FxRateUsed: Number(expense.fxRateUsed ?? getRateFor(expense.originalCurrency || expense.currency) ?? 0),
+    BaseCurrency: expense.baseCurrency || tripSettings.baseCurrency,
+    ConvertedAmount: Number(expense.convertedAmount ?? 0),
+    PaidBy: expense.paidBy || "",
+    SharedBy: Array.isArray(expense.sharedBy) ? expense.sharedBy.join(", ") : "",
+    Note: expense.note || "",
+    CreatedBy: expense.createdByName || formatAuditUid(expense.createdBy),
+    CreatedAt: formatTimestamp(expense.createdAt),
+    UpdatedBy: expense.updatedByName || formatAuditUid(expense.updatedBy),
+    UpdatedAt: formatTimestamp(expense.updatedAt)
+  }));
+
+  const summaryRows = Object.entries(net).map(([person, amount]) => {
+    const rounded = round2(amount);
+    return {
+      Person: person,
+      Status: rounded > 0 ? "Receivable" : rounded < 0 ? "Payable" : "Settled",
+      Currency: currency,
+      Amount: Math.abs(rounded)
+    };
+  });
+
+  const settlementRows = settlement.map(item => {
+    const row = { ...item, currency };
+    const key = getSettlementKey(row);
+    const paid = getPaidSettlementForKey(key);
+    return {
+      From: item.from,
+      To: item.to,
+      Currency: currency,
+      Amount: Number(item.amount),
+      Status: paid ? "Paid" : "Unpaid",
+      MarkedBy: paid ? (paid.markedByName || formatAuditUid(paid.markedBy)) : "",
+      PaidAt: paid ? formatTimestamp(paid.paidAt) : "",
+      SettlementKey: key
+    };
+  });
+
+  const paidRows = settlements.map(item => ({
+    From: item.from || "",
+    To: item.to || "",
+    Currency: item.currency || "",
+    Amount: Number(item.amount || 0),
+    Status: item.status || "",
+    MarkedBy: item.markedByName || formatAuditUid(item.markedBy),
+    PaidAt: formatTimestamp(item.paidAt),
+    SettlementKey: item.settlementKey || ""
+  }));
+
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(expensesRows), "Expenses");
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(summaryRows), "Summary");
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(settlementRows), "Settlement");
+  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(paidRows), "Paid Records");
+
+  window.XLSX.writeFile(wb, getExportFileName());
+}
+
+async function handleExportExcel() {
+  try {
+    syncStatus.textContent = "Preparing Excel...";
+    await ensureSheetJs();
+    exportWorkbook();
+    syncStatus.textContent = `Synced (${tripId})`;
+  } catch (error) {
+    console.error(error);
+    syncStatus.textContent = "Export error";
+    alert("匯出 Excel 失敗，請稍後再試。");
+  }
 }
 
 /* admin panel */
@@ -803,12 +742,7 @@ function isAdmin() {
 
 function renderAllowedEmails() {
   if (!adminPanel) return;
-
-  if (!isAdmin()) {
-    adminPanel.classList.add("hidden");
-    return;
-  }
-
+  if (!isAdmin()) { adminPanel.classList.add("hidden"); return; }
   adminPanel.classList.remove("hidden");
 
   allowedEmailList.innerHTML = allowedEmailsCache.length
@@ -816,8 +750,7 @@ function renderAllowedEmails() {
         <div class="member-chip">
           <span>${safeEscape(email)}</span>
           <button type="button" data-remove-email="${safeEscape(email)}">移除</button>
-        </div>
-      `).join("")
+        </div>`).join("")
     : `<p class="hint" style="margin:0">暫無授權 email</p>`;
 
   allowedEmailList.querySelectorAll("[data-remove-email]").forEach(btn => {
@@ -827,39 +760,24 @@ function renderAllowedEmails() {
 
 async function addAllowedEmail() {
   const email = normalizeEmail(allowedEmailInput.value);
-
-  if (!email || !email.includes("@")) {
-    return alert("請輸入有效 email。");
-  }
-
-  if (allowedEmailsCache.includes(email)) {
-    return alert("此 email 已在名單中。");
-  }
-
-  await setDoc(getTripDocRef(), {
-    allowedEmails: [...allowedEmailsCache, email]
-  }, { merge: true });
-
+  if (!email || !email.includes("@")) return alert("請輸入有效 email。");
+  if (allowedEmailsCache.includes(email)) return alert("此 email 已在名單中。");
+  await setDoc(getTripDocRef(), { allowedEmails: [...allowedEmailsCache, email] }, { merge: true });
   allowedEmailInput.value = "";
 }
 
 async function removeAllowedEmail(email) {
   if (!confirm(`移除 ${email}？`)) return;
-
-  await setDoc(getTripDocRef(), {
-    allowedEmails: allowedEmailsCache.filter(e => e !== email)
-  }, { merge: true });
+  await setDoc(getTripDocRef(), { allowedEmails: allowedEmailsCache.filter(e => e !== email) }, { merge: true });
 }
 
 /* OCR local free */
 async function ensureTesseract() {
   if (window.Tesseract) return;
-
   await new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-    script.onload = resolve;
-    script.onerror = reject;
+    script.onload = resolve; script.onerror = reject;
     document.body.appendChild(script);
   });
 }
@@ -868,9 +786,7 @@ async function preprocessReceiptImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-
     img.onerror = reject;
-
     img.onload = () => {
       URL.revokeObjectURL(url);
 
@@ -882,7 +798,6 @@ async function preprocessReceiptImage(file) {
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
-
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, w, h);
 
@@ -895,13 +810,8 @@ async function preprocessReceiptImage(file) {
       }
 
       const pixels = [];
-
-      for (let i = 0; i < d.length; i += 4) {
-        pixels.push(d[i]);
-      }
-
+      for (let i = 0; i < d.length; i += 4) pixels.push(d[i]);
       pixels.sort((a, b) => a - b);
-
       const lo = pixels[Math.floor(pixels.length * 0.05)];
       const hi = pixels[Math.floor(pixels.length * 0.95)];
       const range = hi - lo || 1;
@@ -912,58 +822,31 @@ async function preprocessReceiptImage(file) {
       }
 
       ctx.putImageData(imageData, 0, 0);
-
       canvas.toBlob(blob => resolve(blob), "image/png");
     };
-
     img.src = url;
   });
 }
-
-function normalizeOCRText(raw) {
-  return String(raw || "")
-    .replace(/[|]/g, "1")
-    .replace(/[Ｏ]/g, "0")
-    .replace(/[，]/g, ",")
-    .replace(/[：]/g, ":")
-    .replace(/\r/g, "")
-    .replace(/[ \t]+/g, " ")
-    .trim();
-}
-
-function splitLines(text) {
-  return text.split("\n").map(l => l.trim()).filter(Boolean);
-}
-
+function normalizeOCRText(raw) { return String(raw || "").replace(/[|]/g, "1").replace(/[Ｏ]/g, "0").replace(/[，]/g, ",").replace(/[：]/g, ":").replace(/\r/g, "").replace(/[ \t]+/g, " ").trim(); }
+function splitLines(text) { return text.split("\n").map(l => l.trim()).filter(Boolean); }
 function parseMoneyFromLine(line) {
   const cleaned = line.replace(/([A-Z]{3}|HK\$|NT\$|US\$|RMB|JPY|KRW|TWD|CNY|USD|HKD)/gi, " ");
   const matches = [...cleaned.matchAll(/(?:\d{1,3}(?:[,\s]\d{3})+|\d+)(?:[.,]\d{2})?/g)];
-
   const nums = matches.map(m => m[0].replace(/\s/g, "")).map(token => {
     if (token.includes(",") && token.includes(".")) {
-      const lastComma = token.lastIndexOf(",");
-      const lastDot = token.lastIndexOf(".");
+      const lastComma = token.lastIndexOf(","), lastDot = token.lastIndexOf(".");
       const decimalSep = lastComma > lastDot ? "," : ".";
-
-      token = decimalSep === ","
-        ? token.replace(/\./g, "").replace(",", ".")
-        : token.replace(/,/g, "");
+      token = decimalSep === "," ? token.replace(/\./g, "").replace(",", ".") : token.replace(/,/g, "");
     } else if (token.includes(",") && !token.includes(".")) {
       const parts = token.split(",");
-      token = (parts.length === 2 && parts[1].length === 2)
-        ? `${parts[0]}.${parts[1]}`
-        : token.replace(/,/g, "");
+      token = (parts.length === 2 && parts[1].length === 2) ? `${parts[0]}.${parts[1]}` : token.replace(/,/g, "");
     }
-
     return Number(token);
   }).filter(n => Number.isFinite(n) && n > 0);
-
   return nums.length ? Math.max(...nums) : null;
 }
-
 function detectCurrencyFromContext(text, fallback = "HKD") {
   const t = text.toUpperCase();
-
   if (/\bHKD\b|HK\$/.test(t)) return "HKD";
   if (/\bUSD\b|US\$/.test(t)) return "USD";
   if (/\bTWD\b|NT\$/.test(t)) return "TWD";
@@ -973,107 +856,48 @@ function detectCurrencyFromContext(text, fallback = "HKD") {
   if (t.includes("₩")) return "KRW";
   if (t.includes("¥")) return /JAPAN|TOKYO|OSAKA/.test(t) ? "JPY" : fallback;
   if (t.includes("$")) return t.includes("HK") ? "HKD" : t.includes("US") ? "USD" : t.includes("NT") ? "TWD" : fallback;
-
   return fallback;
 }
-
 function extractDateAdvanced(lines) {
   const joined = lines.join(" ");
   const patterns = [
     /\b(20\d{2})[\/\-.](0?\d|1[0-2])[\/\-.](0?\d|[12]\d|3[01])\b/g,
     /\b(0?\d|[12]\d|3[01])[\/\-.](0?\d|1[0-2])[\/\-.](20\d{2})\b/g
   ];
-
   const candidates = [];
-
   for (const p of patterns) {
-    let m;
-
-    while ((m = p.exec(joined)) !== null) {
-      let y;
-      let mo;
-      let d;
-
-      if (m[1].startsWith("20")) {
-        y = m[1];
-        mo = m[2];
-        d = m[3];
-      } else {
-        d = m[1];
-        mo = m[2];
-        y = m[3];
-      }
-
+    let m; while ((m = p.exec(joined)) !== null) {
+      let y, mo, d;
+      if (m[1].startsWith("20")) { y = m[1]; mo = m[2]; d = m[3]; }
+      else { d = m[1]; mo = m[2]; y = m[3]; }
       const ymd = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       const dt = new Date(`${ymd}T00:00:00Z`);
-
-      if (!Number.isNaN(dt.getTime())) {
-        candidates.push(ymd);
-      }
+      if (!Number.isNaN(dt.getTime())) candidates.push(ymd);
     }
   }
-
   return candidates[0] || "";
 }
-
 function scoreAmountLine(line) {
   const u = line.toUpperCase();
   let score = 0;
-
   if (/TOTAL|GRAND TOTAL|AMOUNT DUE|應付|合計|總計/.test(u)) score += 80;
   if (/SUBTOTAL|小計/.test(u)) score += 30;
   if (/TAX|VAT|GST|SERVICE|折扣|DISCOUNT|CHANGE|找續/.test(u)) score -= 35;
-
   const amount = parseMoneyFromLine(line);
-
-  if (amount !== null) {
-    score += 20;
-  } else {
-    score -= 40;
-  }
-
-  return {
-    score,
-    amount
-  };
+  if (amount !== null) score += 20; else score -= 40;
+  return { score, amount };
 }
-
 function extractTotalAmountAdvanced(lines) {
-  const candidates = lines
-    .map((line, idx) => ({
-      line,
-      idx,
-      ...scoreAmountLine(line)
-    }))
-    .filter(c => c.amount !== null);
-
-  if (!candidates.length) {
-    return {
-      amount: null,
-      line: ""
-    };
-  }
-
+  const candidates = lines.map((line, idx) => ({ line, idx, ...scoreAmountLine(line) })).filter(c => c.amount !== null);
+  if (!candidates.length) return { amount: null, line: "" };
   candidates.sort((a, b) => b.score - a.score || b.idx - a.idx);
-
-  return {
-    amount: candidates[0].amount,
-    line: candidates[0].line
-  };
+  return { amount: candidates[0].amount, line: candidates[0].line };
 }
-
 function extractTitleAdvanced(lines) {
   const blacklist = /TEL|INVOICE|RECEIPT|DATE|TIME|THANK|WELCOME|WWW|HTTP|@/i;
-  const c = lines.slice(0, 8).filter(l =>
-    l.length >= 3 &&
-    l.length <= 48 &&
-    !blacklist.test(l) &&
-    parseMoneyFromLine(l) === null
-  );
-
+  const c = lines.slice(0, 8).filter(l => l.length >= 3 && l.length <= 48 && !blacklist.test(l) && parseMoneyFromLine(l) === null);
   return c[0] || lines[0] || "Receipt";
 }
-
 function parseReceiptTextAdvanced(rawText, currentCurrency) {
   const normalized = normalizeOCRText(rawText);
   const lines = splitLines(normalized);
@@ -1083,7 +907,6 @@ function parseReceiptTextAdvanced(rawText, currentCurrency) {
   const merchant = extractTitleAdvanced(lines);
 
   let confidence = 0.45;
-
   if (amount !== null) confidence += 0.2;
   if (date) confidence += 0.15;
   if (currency) confidence += 0.1;
@@ -1104,67 +927,33 @@ function openAiPreviewModal(result) {
   aiDateInput.value = result.date || "";
   aiCurrencyInput.value = result.currency || (currencyInput.value || "HKD");
   aiTotalInput.value = Number.isFinite(Number(result.total)) ? String(result.total) : "";
-  aiConfidenceInput.value = typeof result.confidence === "number"
-    ? `${Math.round(result.confidence * 100)}%`
-    : "n/a";
+  aiConfidenceInput.value = typeof result.confidence === "number" ? `${Math.round(result.confidence * 100)}%` : "n/a";
   aiReasonInput.value = result.reason || "";
   ocrPreviewModal.classList.remove("hidden");
 }
-
-function closeAiPreviewModal() {
-  ocrPreviewModal.classList.add("hidden");
-}
-
+function closeAiPreviewModal() { ocrPreviewModal.classList.add("hidden"); }
 function applyAiResultToForm() {
-  if (aiMerchantInput.value.trim() && !titleInput.value.trim()) {
-    titleInput.value = aiMerchantInput.value.trim();
-  }
-
-  if (aiDateInput.value) {
-    dateInput.value = aiDateInput.value;
-  }
-
-  if (aiCurrencyInput.value) {
-    currencyInput.value = aiCurrencyInput.value;
-  }
-
-  if (aiTotalInput.value) {
-    amountInput.value = aiTotalInput.value;
-  }
-
-  noteInput.value = [
-    noteInput.value.trim(),
-    `OCR:merchant=${aiMerchantInput.value || "n/a"},confidence=${aiConfidenceInput.value || "n/a"}`
-  ].filter(Boolean).join(" | ");
-
+  if (aiMerchantInput.value.trim() && !titleInput.value.trim()) titleInput.value = aiMerchantInput.value.trim();
+  if (aiDateInput.value) dateInput.value = aiDateInput.value;
+  if (aiCurrencyInput.value) currencyInput.value = aiCurrencyInput.value;
+  if (aiTotalInput.value) amountInput.value = aiTotalInput.value;
+  noteInput.value = [noteInput.value.trim(), `OCR:merchant=${aiMerchantInput.value || "n/a"},confidence=${aiConfidenceInput.value || "n/a"}`].filter(Boolean).join(" | ");
   closeAiPreviewModal();
 }
-
 async function runReceiptOCR() {
   const file = ocrFileInput.files?.[0];
-
-  if (!file) {
-    return alert("請先選擇收據圖片。");
-  }
-
+  if (!file) return alert("請先選擇收據圖片。");
   try {
     syncStatus.textContent = "預處理圖片...";
-
     await ensureTesseract();
-
     const processed = await preprocessReceiptImage(file);
-
     syncStatus.textContent = "OCR 辨識中...";
-
     const { data } = await window.Tesseract.recognize(processed, "eng+chi_tra", {
       tessedit_ocr_engine_mode: "1",
-      tessedit_pageseg_mode: "6"
+      tessedit_pageseg_mode: "6",
     });
-
     const parsed = parseReceiptTextAdvanced(data?.text || "", currencyInput.value || "HKD");
-
     openAiPreviewModal(parsed);
-
     syncStatus.textContent = `OCR ready (${tripId})`;
   } catch (e) {
     console.error(e);
@@ -1175,40 +964,20 @@ async function runReceiptOCR() {
 
 /* boot */
 setToday();
-
 form.addEventListener("submit", saveExpense);
 cancelEditBtn.addEventListener("click", resetExpenseForm);
 addMemberBtn.addEventListener("click", addMember);
+if (saveRatesBtn) saveRatesBtn.addEventListener("click", saveTripSettings);
+if (baseCurrencyInput) baseCurrencyInput.addEventListener("change", () => { tripSettings.baseCurrency = baseCurrencyInput.value; renderRateEditor(); });
 
-if (saveRatesBtn) {
-  saveRatesBtn.addEventListener("click", saveTripSettings);
-}
-
-if (baseCurrencyInput) {
-  baseCurrencyInput.addEventListener("change", () => {
-    tripSettings.baseCurrency = baseCurrencyInput.value;
-    renderRateEditor();
-  });
-}
-
-if (ocrBtn) {
-  ocrBtn.addEventListener("click", runReceiptOCR);
-}
-
-if (confirmAiFillBtn) {
-  confirmAiFillBtn.addEventListener("click", applyAiResultToForm);
-}
-
-if (cancelAiFillBtn) {
-  cancelAiFillBtn.addEventListener("click", closeAiPreviewModal);
-}
+if (ocrBtn) ocrBtn.addEventListener("click", runReceiptOCR);
+if (confirmAiFillBtn) confirmAiFillBtn.addEventListener("click", applyAiResultToForm);
+if (cancelAiFillBtn) cancelAiFillBtn.addEventListener("click", closeAiPreviewModal);
 
 googleSignInBtn.addEventListener("click", handleGoogleSignIn);
 signOutBtn.addEventListener("click", handleSignOut);
-
-if (addAllowedEmailBtn) {
-  addAllowedEmailBtn.addEventListener("click", addAllowedEmail);
-}
+if (addAllowedEmailBtn) addAllowedEmailBtn.addEventListener("click", addAllowedEmail);
+if (exportExcelBtn) exportExcelBtn.addEventListener("click", handleExportExcel);
 
 getRedirectResult(auth).catch((error) => {
   console.error("Google redirect login error:", error?.code, error?.message, error);
@@ -1221,34 +990,30 @@ onAuthStateChanged(auth, async (user) => {
 
   if (!user) {
     syncStatus.textContent = "Please sign in";
-
     if (stopTripListener) stopTripListener();
     if (stopExpensesListener) stopExpensesListener();
-
+    if (stopSettlementsListener) stopSettlementsListener();
     expenses = [];
+    settlements = [];
     tripCreatorUid = null;
     allowedEmailsCache = [];
-
     renderExpenses();
     renderAllowedEmails();
     summary.innerHTML = "";
-
     return;
   }
 
   syncStatus.textContent = "Connected";
-
   try {
     await ensureTripMembersAndSettings();
-
     initMembers();
     renderRateEditor();
     renderAllowedEmails();
     startTripListener();
     listenToExpenses();
+    listenToSettlements();
   } catch (error) {
     console.error(error);
-
     if (error?.code === "permission-denied") {
       syncStatus.textContent = "No access";
       alert("你無權限進入此 trip。請管理員把你 email 加入 allowedEmails。");
