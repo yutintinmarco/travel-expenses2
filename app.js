@@ -241,12 +241,14 @@ async function ensureTripMembersAndSettings() {
   const emailAllowed = !!myEmail && allowedEmails.includes(myEmail);
   const isCreator = data.createdBy === currentUser.uid;
 
+  // 自動 claim：email 已白名單 or 係 trip 創建者 -> 自動加 uid
   if (!uidAllowed && (emailAllowed || isCreator)) {
     const nextUids = uniqueStrings([...tripAllowedUids, currentUser.uid]);
     await setDoc(tripRef, { allowedUids: nextUids }, { merge: true });
     tripAllowedUids = nextUids;
   }
 
+  // 最終判斷
   if (!tripAllowedUids.includes(currentUser.uid)) {
     throw Object.assign(new Error("not_allowed"), { code: "permission-denied" });
   }
@@ -428,6 +430,19 @@ async function removeMember(name) {
   members = next; initMembers();
 }
 
+function formatAuditUid(uid) {
+  if (!uid) return "—";
+  if (currentUser && uid === currentUser.uid) return "你";
+  return uid.slice(0, 7) + "…";
+}
+
+function formatTimestamp(ts) {
+  if (!ts) return "";
+  const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
+  if (isNaN(d)) return "";
+  return d.toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 function renderExpenses() {
   if (!expenses.length) return expenseList.innerHTML = `<p class="neutral">暫時未有支出。</p>`;
   const base = tripSettings.baseCurrency;
@@ -443,6 +458,10 @@ function renderExpenses() {
         <div class="expense-meta">換算：${safeEscape(base)} ${cAmt.toFixed(2)}</div>
         <div class="expense-meta">${safeEscape(expense.date)} · Paid by ${safeEscape(expense.paidBy)} · Shared by ${shareText}</div>
         <div class="expense-meta">${safeEscape(expense.category)}${expense.note ? ` · ${safeEscape(expense.note)}` : ""}</div>
+        <div class="expense-audit">
+          建立：${formatAuditUid(expense.createdBy)}${expense.createdAt ? ` ${formatTimestamp(expense.createdAt)}` : ""}
+          ${expense.updatedBy && expense.updatedBy !== expense.createdBy ? ` · 改：${formatAuditUid(expense.updatedBy)}${expense.updatedAt ? ` ${formatTimestamp(expense.updatedAt)}` : ""}` : ""}
+        </div>
         <button class="edit-btn" data-edit-id="${safeEscape(expense.id)}">Edit</button>
         <button class="delete-btn" data-delete-id="${safeEscape(expense.id)}">Delete</button>
       </div>
@@ -602,7 +621,6 @@ async function preprocessReceiptImage(file) {
     img.src = url;
   });
 }
-
 function normalizeOCRText(raw) { return String(raw || "").replace(/[|]/g, "1").replace(/[Ｏ]/g, "0").replace(/[，]/g, ",").replace(/[：]/g, ":").replace(/\r/g, "").replace(/[ \t]+/g, " ").trim(); }
 function splitLines(text) { return text.split("\n").map(l => l.trim()).filter(Boolean); }
 function parseMoneyFromLine(line) {
