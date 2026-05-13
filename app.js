@@ -45,6 +45,9 @@ const amountInput = document.getElementById("amount");
 const currencyInput = document.getElementById("currency");
 const paidByInput = document.getElementById("paidBy");
 const sharedByGroup = document.getElementById("sharedByGroup");
+const splitMethodInput = document.getElementById("splitMethod");
+const splitConfig = document.getElementById("splitConfig");
+const splitValidationMessage = document.getElementById("splitValidationMessage");
 const categoryInput = document.getElementById("category");
 const noteInput = document.getElementById("note");
 const syncStatus = document.getElementById("syncStatus");
@@ -422,6 +425,233 @@ function getSelectedParticipants() { return Array.from(sharedByGroup.querySelect
 function getRateFor(currency) { const r = tripSettings.exchangeRates?.[currency]; return Number.isFinite(Number(r)) && Number(r) > 0 ? Number(r) : null; }
 function convertToBase(amount, currency) { const rate = getRateFor(currency); return rate ? round2(Number(amount) * rate) : null; }
 
+function getSplitMethodLabel(method) {
+  const labels = {
+    equal: "平均分",
+    amount: "指定金額",
+    percentage: "指定百分比"
+  };
+  return labels[method] || "平均分";
+}
+
+function getCurrentSplitMethod() {
+  return splitMethodInput?.value || "equal";
+}
+
+function getSelectedSplitMembers() {
+  const selected = getSelectedParticipants();
+  return selected.length ? selected : [];
+}
+
+function allocateRoundingDifference(rows, expectedTotal) {
+  const roundedRows = rows.map(row => ({ ...row, amount: round2(row.amount) }));
+  const roundedTotal = round2(roundedRows.reduce((sum, row) => sum + row.amount, 0));
+  const diff = round2(Number(expectedTotal) - roundedTotal);
+  if (roundedRows.length && diff !== 0) {
+    roundedRows[roundedRows.length - 1].amount = round2(roundedRows[roundedRows.length - 1].amount + diff);
+  }
+  return roundedRows;
+}
+
+function renderSplitConfig() {
+  if (!splitConfig || !splitMethodInput) return;
+  const method = getCurrentSplitMethod();
+  const selectedMembers = getSelectedSplitMembers();
+
+  if (splitValidationMessage) {
+    splitValidationMessage.textContent = "";
+  }
+
+  if (!selectedMembers.length) {
+    splitConfig.innerHTML = `<p class="hint">請先選擇至少一位參與人。</p>`;
+    return;
+  }
+
+  if (method === "equal") {
+    splitConfig.innerHTML = `
+      <p class="hint">目前選擇 ${selectedMembers.length} 位參與人，系統會按人數平均分。付款人可以不在參與人之內。</p>
+    `;
+    return;
+  }
+
+  const inputLabel = method === "amount" ? "分攤金額" : "分攤百分比";
+  const suffix = method === "amount" ? (currencyInput?.value || "") : "%";
+  const step = method === "amount" ? "0.01" : "0.01";
+  const placeholder = method === "amount" ? "0.00" : "0.00";
+
+  splitConfig.innerHTML = `
+    <div class="split-grid">
+      ${selectedMembers.map(member => `
+        <label class="split-row">
+          <span>${safeEscape(member)}</span>
+          <div class="split-input-wrap">
+            <input
+              type="number"
+              step="${step}"
+              min="0"
+              inputmode="decimal"
+              placeholder="${placeholder}"
+              data-split-member="${safeEscape(member)}"
+            />
+            <small>${safeEscape(suffix)}</small>
+          </div>
+        </label>
+      `).join("")}
+    </div>
+    <p class="hint">${method === "amount" ? "各人金額總和必須等於支出金額，容許 0.01 尾差。" : "各人百分比總和必須等於 100%，容許 0.01% 尾差。"}</p>
+  `;
+}
+
+function validateAndBuildSplits(originalAmount, originalCurrency, convertedAmount) {
+  const method = getCurrentSplitMethod();
+  const participants = getSelectedSplitMembers();
+
+  if (!participants.length) {
+    return { ok: false, message: "請至少選擇一位參與人。" };
+  }
+
+  const fxRate = getRateFor(originalCurrency);
+  if (!fxRate) {
+    return { ok: false, message: `未有 ${originalCurrency} 匯率。` };
+  }
+
+  if (method === "equal") {
+    const originalShareRaw = originalAmount / participants.length;
+    const baseRows = participants.map(member => ({
+      member,
+      amount: convertedAmount / participants.length,
+      originalAmount: originalShareRaw,
+      percentage: round2(100 / participants.length)
+    }));
+    const adjustedBaseRows = allocateRoundingDifference(baseRows, convertedAmount);
+    const adjustedOriginalRows = allocateRoundingDifference(
+      participants.map(member => ({ member, amount: originalShareRaw })),
+      originalAmount
+    );
+
+    const splits = adjustedBaseRows.map((row, index) => ({
+      member: row.member,
+      amount: row.amount,
+      originalAmount: adjustedOriginalRows[index].amount,
+      percentage: participants.length ? round2(row.amount / convertedAmount * 100) : 0
+    }));
+
+    return { ok: true, splitMethod: "equal", sharedBy: participants, splits };
+  }
+
+  const inputs = Array.from(splitConfig?.querySelectorAll("[data-split-member]") || []);
+  const values = inputs.map(input => ({
+    member: input.dataset.splitMember,
+    value: Number(input.value)
+  }));
+
+  if (values.some(row => !Number.isFinite(row.value) || row.value < 0)) {
+    return { ok: false, message: "請輸入有效分攤數字。" };
+  }
+
+  if (values.every(row => row.value === 0)) {
+    return { ok: false, message: "分攤數字不能全為 0。" };
+  }
+
+  if (method === "amount") {
+    const totalOriginalSplit = round2(values.reduce((sum, row) => sum + row.value, 0));
+    const diff = round2(totalOriginalSplit - originalAmount);
+
+    if (Math.abs(diff) > 0.01) {
+      return {
+        ok: false,
+        message: `指定金額總和 ${originalCurrency} ${totalOriginalSplit.toFixed(2)}，與支出金額相差 ${originalCurrency} ${Math.abs(diff).toFixed(2)}。`
+      };
+    }
+
+    const originalRows = allocateRoundingDifference(values.map(row => ({ member: row.member, amount: row.value })), originalAmount);
+    const baseRows = allocateRoundingDifference(originalRows.map(row => ({
+      member: row.member,
+      amount: row.amount * fxRate
+    })), convertedAmount);
+
+    const splits = baseRows.map((row, index) => ({
+      member: row.member,
+      amount: row.amount,
+      originalAmount: originalRows[index].amount,
+      percentage: convertedAmount ? round2(row.amount / convertedAmount * 100) : 0
+    }));
+
+    return { ok: true, splitMethod: "amount", sharedBy: values.map(row => row.member), splits };
+  }
+
+  if (method === "percentage") {
+    const totalPct = round2(values.reduce((sum, row) => sum + row.value, 0));
+    const diff = round2(totalPct - 100);
+
+    if (Math.abs(diff) > 0.01) {
+      return {
+        ok: false,
+        message: `指定百分比總和 ${totalPct.toFixed(2)}%，與 100% 相差 ${Math.abs(diff).toFixed(2)}%。`
+      };
+    }
+
+    const pctRows = values.map(row => ({ member: row.member, percentage: row.value }));
+    const baseRows = allocateRoundingDifference(pctRows.map(row => ({
+      member: row.member,
+      amount: convertedAmount * row.percentage / 100
+    })), convertedAmount);
+    const originalRows = allocateRoundingDifference(pctRows.map(row => ({
+      member: row.member,
+      amount: originalAmount * row.percentage / 100
+    })), originalAmount);
+
+    const splits = baseRows.map((row, index) => ({
+      member: row.member,
+      amount: row.amount,
+      originalAmount: originalRows[index].amount,
+      percentage: round2(pctRows[index].percentage)
+    }));
+
+    return { ok: true, splitMethod: "percentage", sharedBy: values.map(row => row.member), splits };
+  }
+
+  return { ok: false, message: "未知分帳方式。" };
+}
+
+function getExpenseSplitRows(expense, convertedAmount) {
+  if (Array.isArray(expense.splits) && expense.splits.length > 0) {
+    const rows = expense.splits
+      .filter(row => row && row.member && Number.isFinite(Number(row.amount)))
+      .map(row => ({
+        member: String(row.member),
+        amount: Number(row.amount),
+        originalAmount: Number(row.originalAmount ?? 0),
+        percentage: Number(row.percentage ?? 0)
+      }));
+
+    if (rows.length) {
+      return allocateRoundingDifference(rows, convertedAmount);
+    }
+  }
+
+  const participants = Array.isArray(expense.sharedBy) && expense.sharedBy.length ? expense.sharedBy : [];
+  if (!participants.length) return [];
+
+  const fallbackRows = participants.map(member => ({
+    member,
+    amount: Number(convertedAmount) / participants.length,
+    originalAmount: Number(expense.originalAmount ?? expense.amount ?? 0) / participants.length,
+    percentage: round2(100 / participants.length)
+  }));
+
+  return allocateRoundingDifference(fallbackRows, convertedAmount);
+}
+
+function describeSplit(expense) {
+  const method = expense.splitMethod || "equal";
+  const label = getSplitMethodLabel(method);
+  const converted = Number(expense.convertedAmount ?? 0);
+  const rows = getExpenseSplitRows(expense, converted);
+  if (!rows.length) return label;
+  return `${label} · ${rows.map(row => `${row.member}: ${tripSettings.baseCurrency} ${Number(row.amount).toFixed(2)}`).join(" / ")}`;
+}
+
 function setAuthUI(user) {
   if (user) {
     googleSignInBtn.classList.add("hidden");
@@ -694,6 +924,8 @@ function resetExpenseForm() {
   form.reset(); setToday();
   Array.from(sharedByGroup.querySelectorAll("input")).forEach(i => i.checked = true);
   editingExpenseId = null;
+  if (splitMethodInput) splitMethodInput.value = "equal";
+  renderSplitConfig();
   submitBtn.textContent = "新增";
   cancelEditBtn.classList.add("hidden");
   document.getElementById("editingNotice")?.remove();
@@ -712,9 +944,27 @@ function enterEditMode(expenseId) {
   categoryInput.value = expense.category || "Other";
   noteInput.value = expense.note || "";
 
+  const splitMembers = Array.isArray(expense.splits) && expense.splits.length
+    ? expense.splits.map(row => row.member)
+    : (Array.isArray(expense.sharedBy) ? expense.sharedBy : []);
+
   Array.from(sharedByGroup.querySelectorAll("input")).forEach(input => {
-    input.checked = Array.isArray(expense.sharedBy) ? expense.sharedBy.includes(input.value) : false;
+    input.checked = splitMembers.includes(input.value);
   });
+
+  if (splitMethodInput) {
+    splitMethodInput.value = expense.splitMethod || "equal";
+    renderSplitConfig();
+
+    if (Array.isArray(expense.splits)) {
+      expense.splits.forEach(row => {
+        const input = splitConfig?.querySelector(`[data-split-member="${CSS.escape(row.member)}"]`);
+        if (!input) return;
+        if (splitMethodInput.value === "amount") input.value = Number(row.originalAmount ?? 0).toFixed(2);
+        if (splitMethodInput.value === "percentage") input.value = Number(row.percentage ?? 0).toFixed(2);
+      });
+    }
+  }
 
   submitBtn.textContent = "儲存修改";
   cancelEditBtn.classList.remove("hidden");
@@ -749,6 +999,23 @@ async function saveQuickExpense() {
   const paidBy = quickPaidByInput?.value || members[0];
   const participants = [...members];
 
+  const quickSplitRows = allocateRoundingDifference(participants.map(member => ({
+    member,
+    amount: convertedAmount / participants.length,
+    originalAmount: originalAmount / participants.length,
+    percentage: round2(100 / participants.length)
+  })), convertedAmount);
+  const quickOriginalRows = allocateRoundingDifference(participants.map(member => ({
+    member,
+    amount: originalAmount / participants.length
+  })), originalAmount);
+  const quickSplits = quickSplitRows.map((row, index) => ({
+    member: row.member,
+    amount: row.amount,
+    originalAmount: quickOriginalRows[index].amount,
+    percentage: participants.length ? round2(row.amount / convertedAmount * 100) : 0
+  }));
+
   const payload = {
     date: new Date().toISOString().slice(0, 10),
     title,
@@ -761,6 +1028,8 @@ async function saveQuickExpense() {
     fxRateUsed: getRateFor(originalCurrency),
     paidBy,
     sharedBy: participants,
+    splitMethod: "equal",
+    splits: quickSplits,
     category,
     note: "Quick Add",
     updatedBy: currentUser.uid,
@@ -804,6 +1073,13 @@ async function saveExpense(event) {
   const convertedAmount = convertToBase(originalAmount, originalCurrency);
   if (convertedAmount === null) return alert(`未有 ${originalCurrency} 匯率。`);
 
+  const splitResult = validateAndBuildSplits(originalAmount, originalCurrency, convertedAmount);
+  if (!splitResult.ok) {
+    if (splitValidationMessage) splitValidationMessage.textContent = splitResult.message;
+    return alert(splitResult.message);
+  }
+  if (splitValidationMessage) splitValidationMessage.textContent = "";
+
   const displayName = getCurrentUserDisplayName();
 
   const payload = {
@@ -817,7 +1093,9 @@ async function saveExpense(event) {
     baseCurrency: tripSettings.baseCurrency,
     fxRateUsed: getRateFor(originalCurrency),
     paidBy: paidByInput.value,
-    sharedBy: participants,
+    sharedBy: splitResult.sharedBy,
+    splitMethod: splitResult.splitMethod,
+    splits: splitResult.splits,
     category: categoryInput.value,
     note: noteInput.value.trim(),
     updatedBy: currentUser.uid,
@@ -952,6 +1230,7 @@ function renderExpenses() {
         <div class="expense-title">${safeEscape(expense.title)} · ${safeEscape(oCur)} ${oAmt.toFixed(2)}</div>
         <div class="expense-meta">換算：${safeEscape(base)} ${cAmt.toFixed(2)}</div>
         <div class="expense-meta">${safeEscape(expense.date)} · Paid by ${safeEscape(expense.paidBy)} · Shared by ${shareText}</div>
+        <div class="expense-meta">分帳：${safeEscape(describeSplit(expense))}</div>
         <div class="expense-meta">${safeEscape(expense.category)}${expense.note ? ` · ${safeEscape(expense.note)}` : ""}</div>
         <div class="expense-audit">
           <div>建立：${safeEscape(createdName)} · ${formatTimestamp(expense.createdAt)}</div>
@@ -1027,8 +1306,6 @@ function calculateExpenseNetOnly() {
   members.forEach(m => { net[m] = 0; });
 
   expenses.forEach(expense => {
-    if (!Array.isArray(expense.sharedBy) || !expense.sharedBy.length) return;
-
     const converted = Number(
       expense.convertedAmount ??
       convertToBase(
@@ -1038,14 +1315,15 @@ function calculateExpenseNetOnly() {
       0
     );
 
+    const splitRows = getExpenseSplitRows(expense, converted);
+    if (!splitRows.length) return;
+
     if (!Object.prototype.hasOwnProperty.call(net, expense.paidBy)) net[expense.paidBy] = 0;
     net[expense.paidBy] += converted;
 
-    const share = converted / expense.sharedBy.length;
-
-    expense.sharedBy.forEach(m => {
-      if (!Object.prototype.hasOwnProperty.call(net, m)) net[m] = 0;
-      net[m] -= share;
+    splitRows.forEach(row => {
+      if (!Object.prototype.hasOwnProperty.call(net, row.member)) net[row.member] = 0;
+      net[row.member] -= Number(row.amount);
     });
   });
 
@@ -1294,6 +1572,8 @@ function exportWorkbook() {
     "ConvertedAmount",
     "PaidBy",
     "SharedBy",
+    "SplitMethod",
+    "SplitDetail",
     "Note",
     "CreatedBy",
     "CreatedAt",
@@ -1315,6 +1595,8 @@ function exportWorkbook() {
     ConvertedAmount: Number(expense.convertedAmount ?? 0),
     PaidBy: expense.paidBy || "",
     SharedBy: Array.isArray(expense.sharedBy) ? expense.sharedBy.join(", ") : "",
+    SplitMethod: getSplitMethodLabel(expense.splitMethod || "equal"),
+    SplitDetail: describeSplit(expense),
     Note: expense.note || "",
     CreatedBy: expense.createdByName || formatAuditUid(expense.createdBy),
     CreatedAt: formatTimestamp(expense.createdAt),
@@ -1428,9 +1710,49 @@ function exportWorkbook() {
     DeletedAt: formatTimestamp(expense.deletedAt)
   }));
 
+
+  const splitHeaders = [
+    "ExpenseId",
+    "Date",
+    "Item",
+    "PaidBy",
+    "OriginalCurrency",
+    "OriginalAmount",
+    "BaseCurrency",
+    "ConvertedAmount",
+    "SplitMethod",
+    "Member",
+    "MemberOriginalAmount",
+    "MemberBaseAmount",
+    "MemberPercentage",
+    "Status"
+  ];
+
+  const splitRows = allExpenses.flatMap(expense => {
+    const converted = Number(expense.convertedAmount ?? 0);
+    const rows = getExpenseSplitRows(expense, converted);
+    return rows.map(row => ({
+      ExpenseId: expense.id || "",
+      Date: expense.date || "",
+      Item: expense.title || "",
+      PaidBy: expense.paidBy || "",
+      OriginalCurrency: expense.originalCurrency || expense.currency || "",
+      OriginalAmount: Number(expense.originalAmount ?? expense.amount ?? 0),
+      BaseCurrency: expense.baseCurrency || tripSettings.baseCurrency,
+      ConvertedAmount: converted,
+      SplitMethod: getSplitMethodLabel(expense.splitMethod || "equal"),
+      Member: row.member,
+      MemberOriginalAmount: Number(row.originalAmount ?? 0),
+      MemberBaseAmount: Number(row.amount ?? 0),
+      MemberPercentage: Number(row.percentage ?? 0),
+      Status: expense.isDeleted === true ? "Deleted" : "Active"
+    }));
+  });
+
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, coverWs, "Cover");
   window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(expensesRows, expenseHeaders), "Expenses");
+  window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(splitRows, splitHeaders), "Split Details");
   window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(summaryRows, summaryHeaders), "Summary");
   window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(settlementRows, settlementHeaders), "Settlement");
   window.XLSX.utils.book_append_sheet(wb, worksheetFromRows(paidRows, paidHeaders), "Paid Records");
@@ -1796,6 +2118,12 @@ async function runReceiptOCR() {
 setToday();
 form.addEventListener("submit", saveExpense);
 cancelEditBtn.addEventListener("click", resetExpenseForm);
+if (splitMethodInput) splitMethodInput.addEventListener("change", renderSplitConfig);
+if (sharedByGroup) sharedByGroup.addEventListener("change", renderSplitConfig);
+if (currencyInput) currencyInput.addEventListener("change", renderSplitConfig);
+if (amountInput) amountInput.addEventListener("input", () => {
+  if (splitValidationMessage) splitValidationMessage.textContent = "";
+});
 
 if (quickAddBtn) quickAddBtn.addEventListener("click", saveQuickExpense);
 if (quickTitleInput) quickTitleInput.addEventListener("input", () => updateCategoryFromTitle(quickTitleInput, quickCategoryInput, "quick"));
