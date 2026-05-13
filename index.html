@@ -116,9 +116,23 @@
         </label>
 
         <fieldset>
-          <legend>參與人</legend>
+          <legend>參與人 / 分攤對象</legend>
           <div id="sharedByGroup" class="checkbox-grid"></div>
+          <p class="hint">付款人可以不在分攤名單內，例如 Marco 代 A、B 先付。</p>
         </fieldset>
+
+        <section class="split-method-panel">
+          <label>
+            分帳方式
+            <select id="splitMethod">
+              <option value="equal">平均分</option>
+              <option value="amount">指定金額</option>
+              <option value="percentage">指定百分比</option>
+            </select>
+          </label>
+          <div id="splitConfig" class="split-config"></div>
+          <p id="splitValidationMessage" class="validation-message"></p>
+        </section>
 
         <label>
           分類
