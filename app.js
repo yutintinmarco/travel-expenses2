@@ -86,6 +86,16 @@ const exportJsonBtn = document.getElementById("exportJsonBtn");
 const exportJsonBackupBtn = document.getElementById("exportJsonBackupBtn");
 const exportExcelReportBtn = document.getElementById("exportExcelReportBtn");
 
+const quickAddCard = document.getElementById("quickAddCard");
+const quickTitleInput = document.getElementById("quickTitle");
+const quickAmountInput = document.getElementById("quickAmount");
+const quickCurrencyInput = document.getElementById("quickCurrency");
+const quickPaidByInput = document.getElementById("quickPaidBy");
+const quickCategoryInput = document.getElementById("quickCategory");
+const quickAddBtn = document.getElementById("quickAddBtn");
+const quickAddHint = document.getElementById("quickAddHint");
+const quickAddFab = document.getElementById("quickAddFab");
+
 const tripControlPanel = document.getElementById("tripControlPanel");
 const tripStatusText = document.getElementById("tripStatusText");
 const lockTripBtn = document.getElementById("lockTripBtn");
@@ -126,6 +136,104 @@ const normalizeEmail = (e) => String(e || "").trim().toLowerCase();
 function getCurrentUserDisplayName() {
   if (!currentUser) return "未知用戶";
   return currentUser.displayName || currentUser.email || currentUser.uid.slice(0, 7) + "…";
+}
+
+const categoryRules = {
+  Food: [
+    "food", "lunch", "dinner", "breakfast", "brunch", "coffee", "tea", "ramen", "sushi", "bbq", "restaurant", "cafe", "meal", "snack", "dessert", "izakaya", "bar", "drink", "bakery", "noodle", "rice",
+    "飯", "餐", "早餐", "午餐", "晚餐", "咖啡", "茶", "拉麵", "壽司", "燒肉", "餐廳", "居酒屋", "甜品", "小食", "飲品", "麵", "飯店", "食"
+  ],
+  Transport: [
+    "taxi", "uber", "train", "bus", "mtr", "jr", "metro", "subway", "airport express", "flight", "ferry", "parking", "tram", "rail", "shinkansen", "ic card", "suica", "pasmo", "octopus",
+    "的士", "地鐵", "巴士", "電車", "火車", "機場快線", "船", "渡輪", "交通", "新幹線", "車票", "八達通"
+  ],
+  Hotel: [
+    "hotel", "airbnb", "hostel", "inn", "ryokan", "onsen", "resort", "accommodation", "lodging", "stay",
+    "酒店", "旅館", "住宿", "溫泉", "民宿", "旅舍"
+  ],
+  Ticket: [
+    "ticket", "museum", "disney", "usj", "temple", "shrine", "zoo", "aquarium", "tour", "show", "park", "admission", "entry", "pass",
+    "門票", "博物館", "迪士尼", "環球影城", "寺", "神社", "動物園", "水族館", "景點", "入場", "展覽", "表演"
+  ],
+  Shopping: [
+    "shopping", "souvenir", "donki", "uniqlo", "gu", "muji", "drugstore", "cosme", "mall", "outlet", "market", "convenience", "lawson", "familymart", "7-eleven", "seven", "supermarket", "gift",
+    "購物", "手信", "藥妝", "商場", "百貨", "超市", "便利店", "紀念品", "禮物", "堂吉訶德"
+  ]
+};
+
+const categoryPriority = ["Transport", "Hotel", "Food", "Ticket", "Shopping"];
+const quickPrefsKey = () => `travel-expenses-quick-prefs:${tripId}`;
+
+function inferCategoryFromTitle(title) {
+  const text = String(title || "").trim().toLowerCase();
+  if (!text) return "Other";
+
+  const scores = {};
+  Object.entries(categoryRules).forEach(([category, keywords]) => {
+    scores[category] = 0;
+    keywords.forEach(keyword => {
+      const key = String(keyword).toLowerCase();
+      if (!key) return;
+      if (text.includes(key)) scores[category] += key.length > 3 ? 2 : 1;
+    });
+  });
+
+  let bestCategory = "Other";
+  let bestScore = 0;
+
+  categoryPriority.forEach(category => {
+    const score = scores[category] || 0;
+    if (score > bestScore) {
+      bestScore = score;
+      bestCategory = category;
+    }
+  });
+
+  return bestScore > 0 ? bestCategory : "Other";
+}
+
+function loadQuickPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(quickPrefsKey()) || "{}");
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveQuickPrefs() {
+  if (!quickCurrencyInput || !quickPaidByInput || !quickCategoryInput) return;
+  const prefs = {
+    currency: quickCurrencyInput.value,
+    paidBy: quickPaidByInput.value,
+    category: quickCategoryInput.value
+  };
+  localStorage.setItem(quickPrefsKey(), JSON.stringify(prefs));
+}
+
+function applyQuickPrefs() {
+  if (!quickCurrencyInput || !quickPaidByInput || !quickCategoryInput) return;
+  const prefs = loadQuickPrefs();
+
+  quickCurrencyInput.value = prefs.currency || tripSettings.baseCurrency || "HKD";
+
+  if (prefs.paidBy && members.includes(prefs.paidBy)) {
+    quickPaidByInput.value = prefs.paidBy;
+  } else if (members.length > 0) {
+    quickPaidByInput.value = members[0];
+  }
+
+  quickCategoryInput.value = prefs.category || "Food";
+}
+
+function updateCategoryFromTitle(titleEl, categoryEl, sourceLabel = "") {
+  if (!titleEl || !categoryEl) return;
+  const inferred = inferCategoryFromTitle(titleEl.value);
+  if (inferred !== "Other") {
+    categoryEl.value = inferred;
+    if (sourceLabel && quickAddHint) {
+      quickAddHint.textContent = `已根據「${titleEl.value.trim()}」估算分類：${inferred}。如不正確，可手動修改。`;
+    }
+  }
 }
 
 function isTripLocked() {
@@ -192,6 +300,11 @@ function updateTripStatusUi() {
   }
   if (ocrBtn) ocrBtn.disabled = locked;
   if (ocrFileInput) ocrFileInput.disabled = locked;
+
+  [quickTitleInput, quickAmountInput, quickCurrencyInput, quickPaidByInput, quickCategoryInput, quickAddBtn].forEach(el => {
+    if (el) el.disabled = locked;
+  });
+  if (quickAddFab) quickAddFab.disabled = locked;
 }
 
 async function logActivity(action, message, targetType = "trip", targetId = tripId, details = {}) {
@@ -370,6 +483,13 @@ function renderMemberManager() {
 
 function initMembers() {
   paidByInput.innerHTML = members.map(member => `<option value="${safeEscape(member)}">${safeEscape(member)}</option>`).join("");
+
+  if (quickPaidByInput) {
+    const previousQuickPaidBy = quickPaidByInput.value;
+    quickPaidByInput.innerHTML = members.map(member => `<option value="${safeEscape(member)}">${safeEscape(member)}</option>`).join("");
+    if (members.includes(previousQuickPaidBy)) quickPaidByInput.value = previousQuickPaidBy;
+  }
+
   sharedByGroup.innerHTML = members.map(member => `
     <label class="checkbox-item">
       <input type="checkbox" value="${safeEscape(member)}" checked />
@@ -377,6 +497,7 @@ function initMembers() {
     </label>
   `).join("");
   renderMemberManager();
+  applyQuickPrefs();
 }
 
 function renderRateEditor() {
@@ -604,6 +725,68 @@ function enterEditMode(expenseId) {
   notice.className = "editing-notice";
   notice.textContent = `正在編輯：${expense.title}`;
   form.prepend(notice);
+}
+
+
+async function saveQuickExpense() {
+  if (!currentUser) return alert("請先登入。");
+  if (!assertTripOpen()) return;
+
+  if (!members.length) return alert("請先新增至少一位成員。");
+
+  const originalAmount = Number(quickAmountInput?.value);
+  if (!Number.isFinite(originalAmount) || originalAmount <= 0) {
+    return alert("請輸入有效金額。");
+  }
+
+  const originalCurrency = quickCurrencyInput?.value || tripSettings.baseCurrency || "HKD";
+  const convertedAmount = convertToBase(originalAmount, originalCurrency);
+  if (convertedAmount === null) return alert(`未有 ${originalCurrency} 匯率。`);
+
+  const displayName = getCurrentUserDisplayName();
+  const category = quickCategoryInput?.value || "Other";
+  const title = quickTitleInput?.value.trim() || category;
+  const paidBy = quickPaidByInput?.value || members[0];
+  const participants = [...members];
+
+  const payload = {
+    date: new Date().toISOString().slice(0, 10),
+    title,
+    amount: originalAmount,
+    currency: originalCurrency,
+    originalAmount,
+    originalCurrency,
+    convertedAmount,
+    baseCurrency: tripSettings.baseCurrency,
+    fxRateUsed: getRateFor(originalCurrency),
+    paidBy,
+    sharedBy: participants,
+    category,
+    note: "Quick Add",
+    updatedBy: currentUser.uid,
+    updatedByName: displayName,
+    updatedAt: serverTimestamp(),
+    isDeleted: false,
+    createdBy: currentUser.uid,
+    createdByName: displayName,
+    createdAt: serverTimestamp()
+  };
+
+  const docRef = await addDoc(getExpensesCollection(), payload);
+
+  await logActivity("expense_created", `${displayName} 快速新增 ${payload.title} ${payload.originalCurrency} ${payload.originalAmount.toFixed(2)}`, "expense", docRef.id, {
+    title: payload.title,
+    amount: payload.originalAmount,
+    currency: payload.originalCurrency,
+    quickAdd: true
+  });
+
+  saveQuickPrefs();
+
+  if (quickAmountInput) quickAmountInput.value = "";
+  if (quickTitleInput) quickTitleInput.value = "";
+  if (quickAddHint) quickAddHint.textContent = "已新增。下一筆可直接輸入項目及金額。";
+  if (quickTitleInput) quickTitleInput.focus();
 }
 
 async function saveExpense(event) {
@@ -1613,6 +1796,23 @@ async function runReceiptOCR() {
 setToday();
 form.addEventListener("submit", saveExpense);
 cancelEditBtn.addEventListener("click", resetExpenseForm);
+
+if (quickAddBtn) quickAddBtn.addEventListener("click", saveQuickExpense);
+if (quickTitleInput) quickTitleInput.addEventListener("input", () => updateCategoryFromTitle(quickTitleInput, quickCategoryInput, "quick"));
+if (titleInput) titleInput.addEventListener("input", () => updateCategoryFromTitle(titleInput, categoryInput));
+[quickCurrencyInput, quickPaidByInput, quickCategoryInput].forEach(el => {
+  if (el) el.addEventListener("change", saveQuickPrefs);
+});
+if (quickAddFab) {
+  quickAddFab.addEventListener("click", () => {
+    if (isTripLocked()) return assertTripOpen();
+    quickAddCard?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => {
+      if (quickTitleInput && !quickTitleInput.value) quickTitleInput.focus();
+      else quickAmountInput?.focus();
+    }, 250);
+  });
+}
 addMemberBtn.addEventListener("click", addMember);
 if (saveRatesBtn) saveRatesBtn.addEventListener("click", saveTripSettings);
 if (baseCurrencyInput) baseCurrencyInput.addEventListener("change", () => { tripSettings.baseCurrency = baseCurrencyInput.value; renderRateEditor(); });
