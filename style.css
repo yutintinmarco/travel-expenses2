@@ -611,3 +611,59 @@ button:disabled {
     padding-bottom: 86px;
   }
 }
+
+/* Phase 4 Split Method */
+.split-method-panel {
+  border: 1px solid #e5e5ea;
+  border-radius: 18px;
+  padding: 14px;
+  background: #fbfbfd;
+  display: grid;
+  gap: 12px;
+}
+
+.split-config {
+  display: grid;
+  gap: 10px;
+}
+
+.split-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.split-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #eeeeee;
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.split-input-wrap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.split-input-wrap small {
+  color: #6e6e73;
+  font-weight: 700;
+}
+
+.validation-message {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .split-row {
+    grid-template-columns: 1fr;
+  }
+}
