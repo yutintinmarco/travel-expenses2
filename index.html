@@ -1,289 +1,1242 @@
-<!DOCTYPE html>
-<html lang="zh-HK">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Trip Expenses (Google Sign-In)</title>
-  <link rel="stylesheet" href="style.css" />
+<html lang="zh-Hant"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title id="page-title">行程</title>
+  <style>
+    :root {
+      --font-scale: 1;
+      --accent-color: #d93025;
+      --team1-color: #4A90D9;
+      --team2-color: #E8A838;
+    }
+    .bg-fixed {
+      position: fixed; inset: 0;
+      background:
+        linear-gradient(rgba(255,255,255,0.45), rgba(255,255,255,0.45)),
+        url("assets/bg/bg_trip.png") center center / cover no-repeat;
+      z-index: -1;
+    }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; background: transparent; color: #111; height: 100vh; overflow: hidden; }
+    html { background: transparent; }
+    .scroll-shell { height: 100vh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-top: env(safe-area-inset-top); background: transparent; }
+    .container { max-width: 480px; margin: 0 auto; padding: 16px 16px 120px 16px; }
+
+
+/* Header */
+.header { margin-bottom: 10px; background: transparent; border: none; border-radius: 0; padding: 10px 12px; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.header-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.header-title-small { font-size: calc(13px * var(--font-scale)); color: #111; margin-bottom: 2px; text-shadow: 0 1px 1px rgba(255,255,255,0.18); }
+.header-title-main { font-size: calc(20px * var(--font-scale)); font-weight: 700; margin-bottom: 2px; text-shadow: 0 1px 3px rgba(0,0,0,0.10); }
+.header-sub-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-top: 6px; }
+.header-sub-text { font-size: calc(12px * var(--font-scale)); color: #000; line-height: 1.5; flex: 1; }
+.header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.today-chip { font-size: calc(11px * var(--font-scale)); padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,0.82); border: 1px solid rgba(255,255,255,0.72); color: #333; max-width: 150px; text-align: right; line-height: 1.4; box-shadow: 0 2px 6px rgba(15,23,42,0.08); }
+.today-chip.active { border-color: #f5c542; background: #fff7d1; color: #5c4300; }
+.refresh-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid #dadada;
+  background: #f9f9fb;
+  font-size: calc(13px * var(--font-scale));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  color: #4A90D9;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.font-controls { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.font-btn { width: 30px; height: 30px; border-radius: 999px; border: 1px solid #dadada; background: #f9f9fb; display: flex; align-items: center; justify-content: center; padding: 0; font-weight: 600; line-height: 1; -webkit-appearance: none; appearance: none; color: #4A90D9; }
+.theme-btn:active { background: #ececf1; }
+.font-btn:active, .refresh-btn:active { background: #ececf1; }
+.theme-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid #dadada;
+  background: #f9f9fb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  font-size: 14px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.status-square { min-width: 88px; min-height: 44px; padding: 4px 8px; border-radius: 12px; background: rgba(245,245,247,0.55); border: 1px solid rgba(255,255,255,0.45); box-shadow: 0 4px 10px rgba(15,23,42,0.05); text-align: center; display: none; flex-direction: column; justify-content: center; align-items: center; }
+.status-main { font-size: calc(12px * var(--font-scale)); font-weight: 600; margin-bottom: 1px; color: #222; }
+.status-sub { font-size: calc(9px * var(--font-scale)); color: #666; }
+.pull-indicator { font-size: calc(11px * var(--font-scale)); color: #777; text-align: center; margin-bottom: 8px; opacity: 0; transform: translateY(-6px); transition: opacity 0.15s ease, transform 0.15s ease; }
+.pull-indicator.show { opacity: 1; transform: translateY(0); }
+
+/* Team bar */
+.team-bar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+.team-bar-label { font-size: calc(11px * var(--font-scale)); color: #666; white-space: nowrap; }
+.team-btn { flex: 1; padding: 6px 0; text-align: center; font-size: calc(12px * var(--font-scale)); border-radius: 999px; border: 1px solid #dadada; background: #f8f8fa; color: #555; font-weight: 500; }
+.team-btn.active-all  { background: #111; border-color: #111; color: #fff; font-weight: 700; }
+.team-btn.active-t1   { background: var(--team1-color); border-color: var(--team1-color); color: #fff; font-weight: 700; }
+.team-btn.active-t2   { background: var(--team2-color); border-color: var(--team2-color); color: #fff; font-weight: 700; }
+
+/* Cards */
+.card { background: rgba(255,255,255,0.24); border-radius: 16px; padding: 12px 14px; box-shadow: 0 10px 24px rgba(15,23,42,0.10); margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.58); backdrop-filter: blur(28px) saturate(1.12); -webkit-backdrop-filter: blur(28px) saturate(1.12); }
+
+/* Flight */
+.trip-row { display: flex; justify-content: space-between; font-size: calc(12px * var(--font-scale)); color: #333; }
+.trip-row-with-logo { align-items: center; column-gap: 10px; }
+.trip-col { flex: 1; }
+.trip-col-right { text-align: right; }
+.trip-logo-col { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; padding: 0 6px; }
+.trip-logo-img { max-height: 28px; width: auto; display: block; }
+.trip-col-title { font-size: calc(11px * var(--font-scale)); color: #666; margin-bottom: 2px; }
+.trip-col-main { font-size: calc(13px * var(--font-scale)); font-weight: 600; }
+.trip-col-sub { font-size: calc(11px * var(--font-scale)); color: #555; margin-top: 2px; }
+.flight-team-row { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
+.flight-team-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.flight-team-row[style*="display: none"] + .flight-team-row,
+.flight-team-row:not([style*="display: none"]):last-of-type { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.flight-team-label { font-size: calc(11px * var(--font-scale)); font-weight: 700; margin-bottom: 6px; padding: 2px 8px; border-radius: 999px; display: inline-block; color: #fff; }
+
+/* Weather */
+.weather-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.weather-title { font-size: calc(13px * var(--font-scale)); font-weight: 600; }
+.weather-updated { font-size: calc(10px * var(--font-scale)); color: #666; }
+.weather-today { font-size: calc(12px * var(--font-scale)); margin-bottom: 4px; color: #333; }
+.weather-sun { font-size: calc(11px * var(--font-scale)); margin-bottom: 6px; color: #555; }
+.weather-days { display: flex; overflow-x: auto; gap: 8px; }
+.weather-day { min-width: 70px; padding: 6px 8px; border-radius: 10px; border: 1px solid #e5e5ea; background: #fff; font-size: calc(11px * var(--font-scale)); text-align: center; }
+.weather-day-label { font-weight: 600; margin-bottom: 2px; }
+.weather-cond { margin-top: 2px; color: #444; }
+.weather-temp { margin-top: 2px; }
+.city-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.city-tab { padding: 4px 12px; border-radius: 999px; font-size: calc(11px * var(--font-scale)); border: 1px solid #dadada; background: #f8f8fa; color: #555; }
+.city-tab.active-kyoto { background: #d4ecd4; border-color: #5a9e5a; color: #2a5a2a; font-weight: 600; }
+.city-tab.active-osaka { background: #ffddd4; border-color: #e06040; color: #6a2010; font-weight: 600; }
+
+/* Day tabs */
+.day-tabs { display: flex; gap: 8px; margin: 16px 0 10px 0; overflow-x: auto; }
+.day-tab { flex: 1 0 auto; min-width: 52px; padding: 7px 10px; text-align: center; font-size: calc(11px * var(--font-scale)); border-radius: 999px; border: 1px solid #dadada; background: #f8f8fa; color: #555; white-space: nowrap; }
+.day-tab.active { background: #ffe58f; border-color: #f5c542; color: #111; font-weight: 600; }
+.day-tab.city-kyoto.active { background: #d4ecd4; border-color: #5a9e5a; color: #2a5a2a; }
+.day-tab.city-osaka.active { background: #ffddd4; border-color: #e06040; color: #6a2010; }
+.day-tab.city-both.active { background: linear-gradient(to right, #d4ecd4, #fce8d4); border-color: transparent; color: #3a3a2a; font-weight: 600; position: relative; }
+.day-tab.city-both.active::before { content: ""; position: absolute; inset: -1px; border-radius: 999px; padding: 1px; background: linear-gradient(to right, #5a9e5a, #e06040); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+.day-content { display: none; }
+.day-content.active { display: block; }
+.section-title { font-size: calc(15px * var(--font-scale)); font-weight: 700; margin-bottom: 6px; color: #111; text-shadow: 0 1px 2px rgba(255,255,255,0.30); }
+.section-sub { font-size: calc(11px * var(--font-scale)); color: rgba(17,17,17,0.68); margin-bottom: 12px; text-shadow: 0 1px 2px rgba(255,255,255,0.30); }
+.city-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: calc(10px * var(--font-scale)); border-radius: 999px; font-weight: 600; vertical-align: middle; }
+.city-badge-kyoto { background: #d4ecd4; color: #2a5a2a; border: 1px solid #5a9e5a; }
+.city-badge-osaka { background: #ffddd4; color: #6a2010; border: 1px solid #e06040; }
+
+/* Timeline */
+.timeline-item { display: flex; gap: 10px; padding: 10px 8px; border-radius: 12px; background: rgba(255,255,255,0.20); margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.52); backdrop-filter: blur(24px) saturate(1.08); -webkit-backdrop-filter: blur(24px) saturate(1.08); box-shadow: 0 6px 16px rgba(15,23,42,0.08); }
+.timeline-item.is-booked { border-bottom: 3px solid #22a852; background: linear-gradient(180deg, rgba(255,255,255,0.20), rgba(52,199,89,0.16)); }
+.timeline-item.clickable { cursor: pointer; }
+.timeline-item.who-team1 { border-left: 3px solid var(--team1-color); }
+.timeline-item.who-team2 { border-left: 3px solid var(--team2-color); }
+.timeline-item.hidden-item { display: none !important; }
+.time { width: 70px; font-size: calc(13px * var(--font-scale)); color: #4a4a4a; font-variant-numeric: tabular-nums; }
+.icon { width: 22px; font-size: calc(20px * var(--font-scale)); line-height: 22px; }
+.content { flex: 1; }
+.content-title { font-size: calc(14px * var(--font-scale)); font-weight: 600; margin-bottom: 2px; }
+.content-note-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.content-note { font-size: calc(11px * var(--font-scale)); color: #666; font-weight: 500; }
+.who-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: calc(10px * var(--font-scale));
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--badge-color, #4A90D9) 18%, rgba(255,255,255,0.62));
+  color: color-mix(in srgb, var(--badge-color, #4A90D9) 62%, #111);
+  border: 1px solid color-mix(in srgb, var(--badge-color, #4A90D9) 42%, rgba(255,255,255,0.45));
+  backdrop-filter: blur(12px) saturate(1.12);
+  -webkit-backdrop-filter: blur(12px) saturate(1.12);
+  box-shadow: 0 1px 4px rgba(15,23,42,0.10);
+}
+.who-tag-team1 { --badge-color: var(--team1-color); }
+.who-tag-team2 { --badge-color: var(--team2-color); }
+.booked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: calc(10px * var(--font-scale));
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, rgba(52,199,89,0.30), rgba(255,255,255,0.34));
+  color: #07551f;
+  border: 1px solid rgba(20,120,48,0.52);
+  border-bottom: 2px solid rgba(34,168,82,0.72);
+  backdrop-filter: blur(12px) saturate(1.16);
+  -webkit-backdrop-filter: blur(12px) saturate(1.16);
+  box-shadow: 0 1px 4px rgba(15,23,42,0.12), inset 0 -1px 0 rgba(34,168,82,0.28);
+}
+.footer-note { margin-top: 18px; font-size: calc(10px * var(--font-scale)); color: #3f3f3f; font-weight: 600; text-align: center; text-shadow: 0 1px 2px rgba(255,255,255,0.32); }
+
+/* Now indicator */
+.now-indicator { display: flex; align-items: center; gap: 7px; margin: 2px 0 8px 0; padding: 0 4px; }
+.now-dot { width: 7px; height: 7px; border-radius: 50%; background: #FF3B30; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(255,59,48,0.18); animation: now-pulse 2s ease-in-out infinite; }
+.now-label { font-size: calc(10px * var(--font-scale)); font-weight: 700; color: #FF3B30; white-space: nowrap; letter-spacing: 0.3px; }
+.now-line { flex: 1; height: 1px; background: linear-gradient(to right, rgba(255,59,48,0.4), rgba(255,59,48,0.05)); }
+@keyframes now-pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(255,59,48,0.18); } 50% { box-shadow: 0 0 0 5px rgba(255,59,48,0.08); } }
+
+/* Pass badges */
+.pass-badge { display: inline-block; margin-left: 10px; padding: 3px 10px; font-size: calc(11px * var(--font-scale)); border-radius: 999px; font-weight: 700; letter-spacing: 0.3px; vertical-align: middle; line-height: 1.4; white-space: nowrap; }
+.pass-jr { background: rgba(0,90,180,0.12); color: #004fa3; border: 1px solid rgba(0,90,180,0.25); }
+.pass-icoca { background: rgba(0,140,100,0.12); color: #006644; border: 1px solid rgba(0,140,100,0.25); }
+.pass-metro { background: rgba(140,0,120,0.12); color: #8a006f; border: 1px solid rgba(140,0,120,0.25); }
+
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: none; align-items: center; justify-content: center; z-index: 999; }
+.modal-backdrop.active { display: flex; }
+.modal { width: 90%; max-width: 420px; background: #fff; border-radius: 18px; padding: 14px 16px 12px 16px; box-shadow: 0 18px 40px rgba(15,23,42,0.3); border: 2px solid transparent; position: relative; overflow: hidden; }
+.modal.is-booked::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; border-radius: 0 0 18px 18px; background: linear-gradient(to right, rgba(52,199,89,0.16), rgba(52,199,89,0.92), rgba(52,199,89,0.16)); box-shadow: 0 -2px 10px rgba(52,199,89,0.24); pointer-events: none; }
+.modal-img-wrapper { margin: -2px 0 8px 0; }
+.modal-img-wrapper img { width: 100%; border-radius: 14px; display: block; transition: opacity 0.25s ease, transform 0.25s ease; }
+.modal-img-wrapper img.fade-out { opacity: 0; transform: translateX(-8px); }
+.modal-img-wrapper img.fade-in { opacity: 1; transform: translateX(0); }
+.modal-dots { display: flex; justify-content: center; gap: 6px; margin: 4px 0; }
+.modal-dot { width: 6px; height: 6px; border-radius: 999px; background: #d0d0d4; }
+.modal-dot.active { background: #111; }
+.modal-title { font-size: calc(15px * var(--font-scale)); font-weight: 600; margin-bottom: 6px; }
+.modal-time { font-size: calc(12px * var(--font-scale)); color: #777; margin-bottom: 8px; }
+.modal-body { font-size: calc(13px * var(--font-scale)); color: #333; line-height: 1.55; margin-bottom: 10px; }
+.modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.modal-link-btn { flex: 1; min-width: 80px; text-align: center; padding: 7px 0; border-radius: 999px; border: none; background: #111; color: #fff; font-size: calc(12px * var(--font-scale)); }
+.modal-close-btn { padding: 6px 14px; border-radius: 999px; border: 1px solid #ddd; background: #f9f9fb; font-size: calc(12px * var(--font-scale)); }
+
+/* Snacks */
+.snack-item .time { width: 0; display: none; }
+.snack-item { padding: 10px 10px; }
+
+/* FAB */
+.fab-wrap { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 1400; display: flex; align-items: flex-end; }
+.fab { width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(200,200,205,0.9); background: rgba(245,245,247,0.92); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 8px 16px rgba(15,23,42,0.14); font-size: 18px; display: flex; align-items: center; justify-content: center; padding: 0; }
+.fab:active { transform: translateY(1px); }
+.fab-menu { display: none; padding: 8px; border-radius: 18px; border: 1px solid rgba(200,200,205,0.9); background: rgba(245,245,247,0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 16px 30px rgba(15,23,42,0.20); flex-direction: column; gap: 10px; align-items: flex-end; position: absolute; right: 0; bottom: calc(100% + 10px); }
+.fab-menu.open { display: flex; }
+.fab-item { width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(200,200,205,0.9); background: rgba(255,255,255,0.78); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.fab-item.active { background: rgba(17,17,17,0.88); border-color: rgba(17,17,17,0.88); }
+.title-accent { color: var(--accent-color, #d93025); }
+
+/* Refresh / Theme button icon color sync */
+.refresh-btn { color: #4A90D9; }
+.theme-btn { color: #4A90D9; }
+
+@media (prefers-color-scheme: dark) {
+  html:not(.theme-light):not(.theme-dark) .refresh-btn,
+  html:not(.theme-light):not(.theme-dark) .theme-btn {
+    color: #e0e0e4;
+  }
+}
+
+html.theme-dark .refresh-btn,
+html.theme-dark .theme-btn {
+  color: #e0e0e4;
+}
+
+html.theme-light .refresh-btn { color: #4A90D9; }
+html.theme-light .theme-btn { color: #111; }
+
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+
+  html:not(.theme-light):not(.theme-dark) {
+    --accent-color: #ff6b52;
+    --team1-color: #6aaff5;
+    --team2-color: #f5c84a;
+  }
+  html:not(.theme-light):not(.theme-dark) body { color: #f0f0f2; }
+  html:not(.theme-light):not(.theme-dark) .bg-fixed {
+    background:
+      linear-gradient(rgba(0,0,0,0.52), rgba(0,0,0,0.52)),
+      url("assets/bg/bg_trip.png") center center / cover no-repeat;
+  }
+  html:not(.theme-light):not(.theme-dark) .header { background: transparent; border: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html:not(.theme-light):not(.theme-dark) .header-title-small { color: rgba(240,240,242,0.75); text-shadow: none; }
+  html:not(.theme-light):not(.theme-dark) .header-title-main { color: #f0f0f2; text-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+  html:not(.theme-light):not(.theme-dark) .header-sub-text { color: rgba(240,240,242,0.75); }
+  html:not(.theme-light):not(.theme-dark) .today-chip { background: rgba(40,40,46,0.80); border-color: rgba(255,255,255,0.14); color: rgba(240,240,242,0.85); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  html:not(.theme-light):not(.theme-dark) .today-chip.active { background: rgba(92,67,0,0.75); border-color: #c9a030; color: #ffe9a0; }
+  html:not(.theme-light):not(.theme-dark) .font-btn,
+  html:not(.theme-light):not(.theme-dark) .refresh-btn,
+  html:not(.theme-light):not(.theme-dark) .theme-btn { background: rgba(44,44,50,0.80); border-color: rgba(255,255,255,0.14); color: #e0e0e4; -webkit-text-fill-color: #e0e0e4; }
+  html:not(.theme-light):not(.theme-dark) .font-btn:active,
+  html:not(.theme-light):not(.theme-dark) .refresh-btn:active,
+  html:not(.theme-light):not(.theme-dark) .theme-btn:active { background: rgba(60,60,68,0.90); }
+  html:not(.theme-light):not(.theme-dark) .status-square { background: rgba(30,30,36,0.72); border-color: rgba(255,255,255,0.10); }
+  html:not(.theme-light):not(.theme-dark) .status-main { color: #f0f0f2; }
+  html:not(.theme-light):not(.theme-dark) .status-sub { color: rgba(200,200,210,0.75); }
+  html:not(.theme-light):not(.theme-dark) .pull-indicator { color: rgba(200,200,210,0.70); }
+  html:not(.theme-light):not(.theme-dark) .team-btn { background: rgba(36,36,42,0.75); border-color: rgba(255,255,255,0.12); color: rgba(220,220,228,0.80); }
+  html:not(.theme-light):not(.theme-dark) .team-btn.active-all { background: rgba(200,200,210,0.18); border: 2px solid rgba(220,220,230,0.70); color: #f0f0f2; font-weight: 700; }
+  html:not(.theme-light):not(.theme-dark) .team-btn.active-t1 { background: rgba(74,144,217,0.28); border: 2px solid var(--team1-color); color: var(--team1-color); font-weight: 700; }
+  html:not(.theme-light):not(.theme-dark) .team-btn.active-t2 { background: rgba(245,200,74,0.22); border: 2px solid var(--team2-color); color: var(--team2-color); font-weight: 700; }
+  html:not(.theme-light):not(.theme-dark) .card { background: rgba(24,24,30,0.62); border-color: rgba(255,255,255,0.09); box-shadow: 0 10px 28px rgba(0,0,0,0.40); }
+  html:not(.theme-light):not(.theme-dark) .trip-row { color: rgba(220,220,228,0.88); }
+  html:not(.theme-light):not(.theme-dark) .trip-col-title { color: rgba(180,180,195,0.70); }
+  html:not(.theme-light):not(.theme-dark) .trip-col-sub { color: rgba(190,190,205,0.72); }
+  html:not(.theme-light):not(.theme-dark) .flight-team-row { border-bottom-color: rgba(255,255,255,0.10); }
+  html:not(.theme-light):not(.theme-dark) .weather-title { color: #f0f0f2; }
+  html:not(.theme-light):not(.theme-dark) .weather-updated { color: rgba(180,180,195,0.65); }
+  html:not(.theme-light):not(.theme-dark) .weather-today { color: rgba(230,230,238,0.92); }
+  html:not(.theme-light):not(.theme-dark) .weather-sun { color: rgba(190,190,205,0.72); }
+  html:not(.theme-light):not(.theme-dark) .weather-day { background: rgba(32,32,40,0.75); border-color: rgba(255,255,255,0.10); color: rgba(220,220,228,0.88); }
+  html:not(.theme-light):not(.theme-dark) .weather-day-label { color: #f0f0f2; }
+  html:not(.theme-light):not(.theme-dark) .weather-cond { color: rgba(190,190,205,0.80); }
+  html:not(.theme-light):not(.theme-dark) .weather-temp { color: rgba(210,210,222,0.85); }
+  html:not(.theme-light):not(.theme-dark) .city-tab { background: rgba(36,36,44,0.72); border-color: rgba(255,255,255,0.12); color: rgba(210,210,222,0.80); }
+  html:not(.theme-light):not(.theme-dark) .city-tab.active-kyoto { background: rgba(42,90,42,0.70); border-color: #5a9e5a; color: #a8dba8; }
+  html:not(.theme-light):not(.theme-dark) .city-tab.active-osaka { background: rgba(100,40,20,0.70); border-color: #e06040; color: #ffb09a; }
+  html:not(.theme-light):not(.theme-dark) .day-tab { background: rgba(36,36,44,0.70); border-color: rgba(255,255,255,0.12); color: rgba(200,200,215,0.78); }
+  html:not(.theme-light):not(.theme-dark) .day-tab.active { background: rgba(120,96,10,0.75); border-color: #c9a030; color: #ffe9a0; }
+  html:not(.theme-light):not(.theme-dark) .day-tab.city-kyoto.active { background: rgba(38,80,38,0.75); border-color: #5a9e5a; color: #a8dba8; }
+  html:not(.theme-light):not(.theme-dark) .day-tab.city-osaka.active { background: rgba(100,40,20,0.75); border-color: #e06040; color: #ffb09a; }
+  html:not(.theme-light):not(.theme-dark) .day-tab.city-both.active { background: linear-gradient(to right, rgba(38,80,38,0.80), rgba(110,46,20,0.80)); border-color: transparent; color: #e8e8e8; position: relative; }
+  html:not(.theme-light):not(.theme-dark) .day-tab.city-both.active::before { content: ""; position: absolute; inset: -1px; border-radius: 999px; padding: 1px; background: linear-gradient(to right, #5a9e5a, #e06040); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+  html:not(.theme-light):not(.theme-dark) .section-title { color: #f0f0f2; text-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+  html:not(.theme-light):not(.theme-dark) .section-sub { color: rgba(200,200,215,0.78); text-shadow: none; }
+  html:not(.theme-light):not(.theme-dark) .city-badge-kyoto { background: rgba(42,90,42,0.65); color: #a8dba8; border-color: #5a9e5a; }
+  html:not(.theme-light):not(.theme-dark) .city-badge-osaka { background: rgba(100,40,20,0.65); color: #ffb09a; border-color: #e06040; }
+  html:not(.theme-light):not(.theme-dark) .timeline-item { background: rgba(24,24,32,0.58); border-color: rgba(255,255,255,0.09); box-shadow: 0 4px 14px rgba(0,0,0,0.30); }
+  html:not(.theme-light):not(.theme-dark) .timeline-item.who-team1 { border-left: 3px solid var(--team1-color); background: rgba(74,144,217,0.10); }
+  html:not(.theme-light):not(.theme-dark) .timeline-item.who-team2 { border-left: 3px solid var(--team2-color); background: rgba(232,168,56,0.10); }
+  html:not(.theme-light):not(.theme-dark) .timeline-item.is-booked { border-bottom: 3px solid #48dc76; background: linear-gradient(180deg, rgba(24,24,32,0.58), rgba(72,220,118,0.14)); }
+  html:not(.theme-light):not(.theme-dark) .time { color: rgba(170,170,188,0.80); }
+  html:not(.theme-light):not(.theme-dark) .content-title { color: #f0f0f2; }
+  html:not(.theme-light):not(.theme-dark) .content-note { color: rgba(180,180,200,0.78); }
+  html:not(.theme-light):not(.theme-dark) .who-tag { background: color-mix(in srgb, var(--badge-color, #6aaff5) 26%, rgba(28,28,36,0.68)); color: color-mix(in srgb, var(--badge-color, #6aaff5) 72%, #ffffff); border-color: color-mix(in srgb, var(--badge-color, #6aaff5) 48%, rgba(255,255,255,0.16)); box-shadow: 0 1px 4px rgba(0,0,0,0.28); }
+  html:not(.theme-light):not(.theme-dark) .who-tag-team1 { --badge-color: var(--team1-color); }
+  html:not(.theme-light):not(.theme-dark) .who-tag-team2 { --badge-color: var(--team2-color); }
+  html:not(.theme-light):not(.theme-dark) .booked-badge { background: linear-gradient(180deg, rgba(72,220,118,0.28), rgba(28,28,36,0.62)); color: #d7ffe0; border-color: rgba(72,220,118,0.50); border-bottom-color: rgba(72,220,118,0.82); box-shadow: 0 1px 4px rgba(0,0,0,0.28), inset 0 -1px 0 rgba(72,220,118,0.24); }
+  html:not(.theme-light):not(.theme-dark) .footer-note { color: rgba(220,220,232,0.84); font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.45); }
+  html:not(.theme-light):not(.theme-dark) .pass-jr { background: rgba(0,90,180,0.22); color: #7ab4f5; border-color: rgba(100,170,255,0.30); }
+  html:not(.theme-light):not(.theme-dark) .pass-icoca { background: rgba(0,140,100,0.22); color: #6adbb8; border-color: rgba(80,200,150,0.30); }
+  html:not(.theme-light):not(.theme-dark) .pass-metro { background: rgba(160,0,140,0.22); color: #d880d0; border-color: rgba(200,80,180,0.30); }
+  html:not(.theme-light):not(.theme-dark) .modal-backdrop { background: rgba(0,0,0,0.60); }
+  html:not(.theme-light):not(.theme-dark) .modal { background: rgba(26,26,34,0.96); border: 1px solid rgba(255,255,255,0.10); box-shadow: 0 24px 56px rgba(0,0,0,0.60); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+  html:not(.theme-light):not(.theme-dark) .modal.is-booked::after { background: linear-gradient(to right, rgba(72,220,118,0.16), rgba(72,220,118,0.96), rgba(72,220,118,0.16)); box-shadow: 0 -2px 12px rgba(72,220,118,0.30); }
+  html:not(.theme-light):not(.theme-dark) .modal-title { color: #f0f0f2; }
+  html:not(.theme-light):not(.theme-dark) .modal-time { color: rgba(170,170,190,0.75); }
+  html:not(.theme-light):not(.theme-dark) .modal-body { color: rgba(200,200,218,0.88); }
+  html:not(.theme-light):not(.theme-dark) .modal-dot { background: rgba(255,255,255,0.20); }
+  html:not(.theme-light):not(.theme-dark) .modal-dot.active { background: rgba(240,240,242,0.88); }
+  html:not(.theme-light):not(.theme-dark) .modal-link-btn { background: rgba(240,240,242,0.92); color: #111; }
+  html:not(.theme-light):not(.theme-dark) .modal-close-btn { background: rgba(40,40,50,0.80); border-color: rgba(255,255,255,0.14); color: rgba(220,220,230,0.88); }
+  html:not(.theme-light):not(.theme-dark) .fab { background: rgba(32,32,40,0.88); border-color: rgba(255,255,255,0.14); box-shadow: 0 8px 20px rgba(0,0,0,0.40); }
+  html:not(.theme-light):not(.theme-dark) .fab-menu { background: rgba(28,28,36,0.92); border-color: rgba(255,255,255,0.12); box-shadow: 0 16px 36px rgba(0,0,0,0.50); }
+  html:not(.theme-light):not(.theme-dark) .fab-item { background: rgba(40,40,50,0.80); border-color: rgba(255,255,255,0.12); }
+  html:not(.theme-light):not(.theme-dark) .fab-item.active { background: rgba(230,230,238,0.90); border-color: rgba(230,230,238,0.90); }
+
+}
+
+html.theme-dark {
+  --accent-color: #ff6b52;
+  --team1-color: #6aaff5;
+  --team2-color: #f5c84a;
+}
+html.theme-dark body { color: #f0f0f2; }
+html.theme-dark .bg-fixed { background: linear-gradient(rgba(0,0,0,0.52),rgba(0,0,0,0.52)), url("assets/bg/bg_trip.png") center center / cover no-repeat; }
+html.theme-dark .header { background: transparent; border: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+html.theme-dark .header-title-small { color: rgba(240,240,242,0.75); text-shadow: none; }
+html.theme-dark .header-title-main { color: #f0f0f2; text-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+html.theme-dark .header-sub-text { color: rgba(240,240,242,0.75); }
+html.theme-dark .today-chip { background: rgba(40,40,46,0.80); border-color: rgba(255,255,255,0.14); color: rgba(240,240,242,0.85); }
+html.theme-dark .today-chip.active { background: rgba(92,67,0,0.75); border-color: #c9a030; color: #ffe9a0; }
+html.theme-dark .font-btn, html.theme-dark .refresh-btn, html.theme-dark .theme-btn { background: rgba(44,44,50,0.80); border-color: rgba(255,255,255,0.14); color: #e0e0e4; -webkit-text-fill-color: #e0e0e4; }
+html.theme-dark .font-btn:active, html.theme-dark .refresh-btn:active, html.theme-dark .theme-btn:active { background: rgba(60,60,68,0.90); }
+html.theme-dark .status-square { background: rgba(30,30,36,0.72); border-color: rgba(255,255,255,0.10); }
+html.theme-dark .status-main { color: #f0f0f2; }
+html.theme-dark .status-sub { color: rgba(200,200,210,0.75); }
+html.theme-dark .pull-indicator { color: rgba(200,200,210,0.70); }
+html.theme-dark .team-btn { background: rgba(36,36,42,0.75); border-color: rgba(255,255,255,0.12); color: rgba(220,220,228,0.80); }
+html.theme-dark .team-btn.active-all { background: rgba(200,200,210,0.18); border: 2px solid rgba(220,220,230,0.70); color: #f0f0f2; font-weight: 700; }
+html.theme-dark .team-btn.active-t1 { background: rgba(74,144,217,0.28); border: 2px solid var(--team1-color); color: var(--team1-color); font-weight: 700; }
+html.theme-dark .team-btn.active-t2 { background: rgba(245,200,74,0.22); border: 2px solid var(--team2-color); color: var(--team2-color); font-weight: 700; }
+html.theme-dark .card { background: rgba(24,24,30,0.62); border-color: rgba(255,255,255,0.09); box-shadow: 0 10px 28px rgba(0,0,0,0.40); }
+html.theme-dark .trip-row { color: rgba(220,220,228,0.88); }
+html.theme-dark .trip-col-title { color: rgba(180,180,195,0.70); }
+html.theme-dark .trip-col-sub { color: rgba(190,190,205,0.72); }
+html.theme-dark .flight-team-row { border-bottom-color: rgba(255,255,255,0.10); }
+html.theme-dark .weather-title { color: #f0f0f2; }
+html.theme-dark .weather-updated { color: rgba(180,180,195,0.65); }
+html.theme-dark .weather-today { color: rgba(230,230,238,0.92); }
+html.theme-dark .weather-sun { color: rgba(190,190,205,0.72); }
+html.theme-dark .weather-day { background: rgba(32,32,40,0.75); border-color: rgba(255,255,255,0.10); color: rgba(220,220,228,0.88); }
+html.theme-dark .weather-day-label { color: #f0f0f2; }
+html.theme-dark .weather-cond { color: rgba(190,190,205,0.80); }
+html.theme-dark .weather-temp { color: rgba(210,210,222,0.85); }
+html.theme-dark .city-tab { background: rgba(36,36,44,0.72); border-color: rgba(255,255,255,0.12); color: rgba(210,210,222,0.80); }
+html.theme-dark .city-tab.active-kyoto { background: rgba(42,90,42,0.70); border-color: #5a9e5a; color: #a8dba8; }
+html.theme-dark .city-tab.active-osaka { background: rgba(100,40,20,0.70); border-color: #e06040; color: #ffb09a; }
+html.theme-dark .day-tab { background: rgba(36,36,44,0.70); border-color: rgba(255,255,255,0.12); color: rgba(200,200,215,0.78); }
+html.theme-dark .day-tab.active { background: rgba(120,96,10,0.75); border-color: #c9a030; color: #ffe9a0; }
+html.theme-dark .day-tab.city-kyoto.active { background: rgba(38,80,38,0.75); border-color: #5a9e5a; color: #a8dba8; }
+html.theme-dark .day-tab.city-osaka.active { background: rgba(100,40,20,0.75); border-color: #e06040; color: #ffb09a; }
+html.theme-dark .day-tab.city-both.active { background: linear-gradient(to right, rgba(38,80,38,0.80), rgba(110,46,20,0.80)); border-color: transparent; color: #e8e8e8; position: relative; }
+html.theme-dark .day-tab.city-both.active::before { content: ""; position: absolute; inset: -1px; border-radius: 999px; padding: 1px; background: linear-gradient(to right, #5a9e5a, #e06040); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+html.theme-dark .section-title { color: #f0f0f2; text-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+html.theme-dark .section-sub { color: rgba(200,200,215,0.78); text-shadow: none; }
+html.theme-dark .city-badge-kyoto { background: rgba(42,90,42,0.65); color: #a8dba8; border-color: #5a9e5a; }
+html.theme-dark .city-badge-osaka { background: rgba(100,40,20,0.65); color: #ffb09a; border-color: #e06040; }
+html.theme-dark .timeline-item { background: rgba(24,24,32,0.58); border-color: rgba(255,255,255,0.09); box-shadow: 0 4px 14px rgba(0,0,0,0.30); }
+html.theme-dark .timeline-item.who-team1 { border-left: 3px solid var(--team1-color); background: rgba(74,144,217,0.10); }
+html.theme-dark .timeline-item.who-team2 { border-left: 3px solid var(--team2-color); background: rgba(232,168,56,0.10); }
+html.theme-dark .timeline-item.is-booked { border-bottom: 3px solid #48dc76; background: linear-gradient(180deg, rgba(24,24,32,0.58), rgba(72,220,118,0.14)); }
+html.theme-dark .time { color: rgba(170,170,188,0.80); }
+html.theme-dark .content-title { color: #f0f0f2; }
+html.theme-dark .content-note { color: rgba(180,180,200,0.78); }
+html.theme-dark .who-tag { background: color-mix(in srgb, var(--badge-color, #6aaff5) 26%, rgba(28,28,36,0.68)); color: color-mix(in srgb, var(--badge-color, #6aaff5) 72%, #ffffff); border-color: color-mix(in srgb, var(--badge-color, #6aaff5) 48%, rgba(255,255,255,0.16)); box-shadow: 0 1px 4px rgba(0,0,0,0.28); }
+html.theme-dark .who-tag-team1 { --badge-color: var(--team1-color); }
+html.theme-dark .who-tag-team2 { --badge-color: var(--team2-color); }
+html.theme-dark .booked-badge { background: linear-gradient(180deg, rgba(72,220,118,0.28), rgba(28,28,36,0.62)); color: #d7ffe0; border-color: rgba(72,220,118,0.50); border-bottom-color: rgba(72,220,118,0.82); box-shadow: 0 1px 4px rgba(0,0,0,0.28), inset 0 -1px 0 rgba(72,220,118,0.24); }
+html.theme-dark .footer-note { color: rgba(220,220,232,0.84); font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.45); }
+html.theme-dark .pass-jr { background: rgba(0,90,180,0.22); color: #7ab4f5; border-color: rgba(100,170,255,0.30); }
+html.theme-dark .pass-icoca { background: rgba(0,140,100,0.22); color: #6adbb8; border-color: rgba(80,200,150,0.30); }
+html.theme-dark .pass-metro { background: rgba(160,0,140,0.22); color: #d880d0; border-color: rgba(200,80,180,0.30); }
+html.theme-dark .modal-backdrop { background: rgba(0,0,0,0.60); }
+html.theme-dark .modal { background: rgba(26,26,34,0.96); border: 1px solid rgba(255,255,255,0.10); box-shadow: 0 24px 56px rgba(0,0,0,0.60); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+html.theme-dark .modal.is-booked::after { background: linear-gradient(to right, rgba(72,220,118,0.16), rgba(72,220,118,0.96), rgba(72,220,118,0.16)); box-shadow: 0 -2px 12px rgba(72,220,118,0.30); }
+html.theme-dark .modal-title { color: #f0f0f2; }
+html.theme-dark .modal-time { color: rgba(170,170,190,0.75); }
+html.theme-dark .modal-body { color: rgba(200,200,218,0.88); }
+html.theme-dark .modal-dot { background: rgba(255,255,255,0.20); }
+html.theme-dark .modal-dot.active { background: rgba(240,240,242,0.88); }
+html.theme-dark .modal-link-btn { background: rgba(240,240,242,0.92); color: #111; }
+html.theme-dark .modal-close-btn { background: rgba(40,40,50,0.80); border-color: rgba(255,255,255,0.14); color: rgba(220,220,230,0.88); }
+html.theme-dark .fab { background: rgba(32,32,40,0.88); border-color: rgba(255,255,255,0.14); box-shadow: 0 8px 20px rgba(0,0,0,0.40); }
+html.theme-dark .fab-menu { background: rgba(28,28,36,0.92); border-color: rgba(255,255,255,0.12); box-shadow: 0 16px 36px rgba(0,0,0,0.50); }
+html.theme-dark .fab-item { background: rgba(40,40,50,0.80); border-color: rgba(255,255,255,0.12); }
+html.theme-dark .fab-item.active { background: rgba(230,230,238,0.90); border-color: rgba(230,230,238,0.90); }
+
+html.theme-light .refresh-btn { color: #4A90D9; -webkit-text-fill-color: #4A90D9; }
+html.theme-light .theme-btn { color: #4A90D9; -webkit-text-fill-color: #4A90D9; }
+
+/* Info View */
+.info-view-title { font-size: calc(13px * var(--font-scale)); font-weight: 700; color: #555; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 12px; }
+.info-team-card { background: rgba(255,255,255,0.30); border-radius: 16px; padding: 14px; box-shadow: 0 10px 24px rgba(15,23,42,0.10); margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.60); border-left-width: 4px; backdrop-filter: blur(28px) saturate(1.12); -webkit-backdrop-filter: blur(28px) saturate(1.12); }
+.info-team-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.info-team-label { font-size: calc(13px * var(--font-scale)); font-weight: 700; padding: 4px 12px; border-radius: 999px; color: #fff; }
+.info-copy-btn { font-size: calc(11px * var(--font-scale)); padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.15); background: rgba(255,255,255,0.70); color: #333; font-weight: 600; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.info-copy-btn.copied { background: #d4edda; border-color: #5a9e5a; color: #2a5a2a; }
+.info-mini-copy { font-size: calc(10px * var(--font-scale)); padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.12); background: rgba(255,255,255,0.65); color: #555; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.info-mini-copy.copied { background: #d4edda; border-color: #5a9e5a; color: #2a5a2a; }
+.info-section { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.08); }
+.info-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.info-section-title { font-size: calc(10px * var(--font-scale)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #888; margin-bottom: 8px; }
+.info-flight-block { border-left: 3px solid transparent; border-radius: 0 8px 8px 0; padding: 8px 10px; margin-bottom: 8px; background: rgba(255,255,255,0.18); }
+.info-flight-block:last-child { margin-bottom: 0; }
+.info-flight-dir { font-size: calc(10px * var(--font-scale)); font-weight: 700; letter-spacing: 0.5px; margin-bottom: 5px; }
+.info-row { display: flex; gap: 6px; margin-bottom: 3px; font-size: calc(12px * var(--font-scale)); line-height: 1.5; }
+.info-row-label { color: #666; white-space: nowrap; min-width: 70px; flex-shrink: 0; }
+.info-row-value { color: #111; font-weight: 500; flex: 1; }
+.info-hotel-row { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.info-hotel-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.info-hotel-city { font-size: calc(11px * var(--font-scale)); font-weight: 700; color: #555; margin-bottom: 4px; }
+.info-hotel-name-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.info-hotel-name { font-size: calc(12px * var(--font-scale)); color: #111; font-weight: 600; flex: 1; }
+.info-hotel-addr-row { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 2px; }
+.info-hotel-addr { font-size: calc(11px * var(--font-scale)); color: #4f4f4f; flex: 1; line-height: 1.4; }
+.info-hotel-dates { font-size: calc(11px * var(--font-scale)); color: #777; margin-top: 3px; }
+.info-hint { font-size: calc(11px * var(--font-scale)); color: #888; text-align: center; margin-top: 6px; line-height: 1.5; }
+
+html.theme-dark .info-team-card { background: rgba(24,24,30,0.62); border-color: rgba(255,255,255,0.09); box-shadow: 0 10px 28px rgba(0,0,0,0.40); }
+html.theme-dark .info-view-title { color: rgba(180,180,200,0.70); }
+html.theme-dark .info-section { border-bottom-color: rgba(255,255,255,0.08); }
+html.theme-dark .info-section-title { color: rgba(160,160,185,0.65); }
+html.theme-dark .info-flight-block { background: rgba(255,255,255,0.06); }
+html.theme-dark .info-flight-dir { color: rgba(180,180,200,0.80); }
+html.theme-dark .info-row-label { color: rgba(170,170,190,0.70); }
+html.theme-dark .info-row-value { color: #f0f0f2; }
+html.theme-dark .info-hotel-city { color: rgba(180,180,200,0.70); }
+html.theme-dark .info-hotel-name { color: #f0f0f2; }
+html.theme-dark .info-hotel-addr { color: rgba(180,180,200,0.75); }
+html.theme-dark .info-hotel-row { border-bottom-color: rgba(255,255,255,0.07); }
+html.theme-dark .info-hotel-dates { color: rgba(160,160,185,0.65); }
+html.theme-dark .info-copy-btn { background: rgba(44,44,52,0.80); border-color: rgba(255,255,255,0.14); color: rgba(220,220,230,0.88); }
+html.theme-dark .info-copy-btn.copied { background: rgba(42,90,42,0.65); border-color: #5a9e5a; color: #a8dba8; }
+html.theme-dark .info-mini-copy { background: rgba(44,44,52,0.80); border-color: rgba(255,255,255,0.14); color: rgba(200,200,218,0.85); }
+html.theme-dark .info-mini-copy.copied { background: rgba(42,90,42,0.65); border-color: #5a9e5a; color: #a8dba8; }
+html.theme-dark .info-hint { color: rgba(150,150,175,0.65); }
+
+  
+/* Expenses view: replace travel fixed cards with expense snapshot */
+body.expenses-view-active #team-bar,
+body.expenses-view-active #flight-card,
+body.expenses-view-active #weather-card {
+  display: none !important;
+}
+
+  </style>
+            <link rel="apple-touch-icon" href="assets/icon/trip_icon.png">
+  <link rel="icon" type="image/png" href="assets/icon/trip_icon.png">
+  <link rel="stylesheet" href="assets/css/expenses.css?v=5.2.1">
 </head>
-
 <body>
-  <main class="app">
-    <section class="header-card">
-      <p class="eyebrow">Travel Expense Module</p>
-      <h1>旅行支出記錄（Google 登入）</h1>
-      <p id="syncStatus">Connecting...</p>
-
-      <div class="auth-row">
-        <button type="button" id="googleSignInBtn">Google 登入</button>
-        <button type="button" id="signOutBtn" class="secondary-btn hidden">登出</button>
-      </div>
-      <p id="authUserText" class="hint"></p>
-      <p id="tripStatusText" class="hint"></p>
-    </section>
-
-    <section class="card quick-add-card" id="quickAddCard">
-      <div class="quick-add-header">
+<div class="bg-fixed"></div>
+<div class="scroll-shell" id="scroll-shell">
+  <div class="container">
+    <div id="pull-indicator" class="pull-indicator">下拉更新行程</div>
+    <div class="header">
+      <div class="header-top">
         <div>
-          <p class="eyebrow">Quick Add</p>
-          <h2>快速新增</h2>
+          <div class="header-title-small" id="header-title-small">My Trip</div>
+          <div class="header-title-main" id="header-title-main">行程</div>
         </div>
-        <span class="quick-pill">全員平均分</span>
-      </div>
-
-      <p class="hint">適合旅行現場即刻入數。參與人預設為所有 members，複雜分帳請用下方完整表格。</p>
-
-      <div class="quick-grid">
-        <label>
-          項目名稱
-          <input type="text" id="quickTitle" placeholder="例如：Ichiran Ramen / Taxi / Hotel" autocomplete="off" />
-        </label>
-
-        <label>
-          金額
-          <input type="number" id="quickAmount" step="0.01" min="0" inputmode="decimal" placeholder="0.00" />
-        </label>
-
-        <label>
-          貨幣
-          <select id="quickCurrency">
-            <option value="HKD">HKD</option>
-            <option value="JPY">JPY</option>
-            <option value="CNY">CNY</option>
-            <option value="TWD">TWD</option>
-            <option value="KRW">KRW</option>
-            <option value="USD">USD</option>
-          </select>
-        </label>
-
-        <label>
-          付款人
-          <select id="quickPaidBy"></select>
-        </label>
-
-        <label>
-          分類
-          <select id="quickCategory">
-            <option value="Food">Food</option>
-            <option value="Transport">Transport</option>
-            <option value="Hotel">Hotel</option>
-            <option value="Shopping">Shopping</option>
-            <option value="Ticket">Ticket</option>
-            <option value="Other">Other</option>
-          </select>
-        </label>
-
-        <button type="button" id="quickAddBtn" class="quick-add-main-btn">快速新增</button>
-      </div>
-
-      <p id="quickAddHint" class="hint">輸入項目名稱後，系統會自動估分類；你仍可手動修改。</p>
-    </section>
-
-    <section class="card">
-      <h2>完整新增 / 編輯支出</h2>
-
-      <form id="expenseForm">
-        <label>
-          日期
-          <input type="date" id="date" required />
-        </label>
-
-        <label>
-          項目
-          <input type="text" id="title" placeholder="例如：Lunch / Taxi" required />
-        </label>
-
-        <label>
-          金額
-          <input type="number" id="amount" step="0.01" min="0" required />
-        </label>
-
-        <label>
-          貨幣
-          <select id="currency">
-            <option value="HKD">HKD</option>
-            <option value="JPY">JPY</option>
-            <option value="CNY">CNY</option>
-            <option value="TWD">TWD</option>
-            <option value="KRW">KRW</option>
-            <option value="USD">USD</option>
-          </select>
-        </label>
-
-        <label>
-          付款人
-          <select id="paidBy"></select>
-        </label>
-
-        <fieldset>
-          <legend>參與人 / 分攤對象</legend>
-          <div id="sharedByGroup" class="checkbox-grid"></div>
-          <p class="hint">付款人可以不在分攤名單內，例如 Marco 代 A、B 先付。</p>
-        </fieldset>
-
-        <section class="split-method-panel">
-          <label>
-            分帳方式
-            <select id="splitMethod">
-              <option value="equal">平均分</option>
-              <option value="amount">指定金額</option>
-              <option value="percentage">指定百分比</option>
-            </select>
-          </label>
-          <div id="splitConfig" class="split-config"></div>
-          <p id="splitValidationMessage" class="validation-message"></p>
-        </section>
-
-        <label>
-          分類
-          <select id="category">
-            <option value="Food">Food</option>
-            <option value="Transport">Transport</option>
-            <option value="Hotel">Hotel</option>
-            <option value="Shopping">Shopping</option>
-            <option value="Ticket">Ticket</option>
-            <option value="Other">Other</option>
-          </select>
-        </label>
-
-        <label>
-          備註
-          <textarea id="note" rows="2" placeholder="Optional"></textarea>
-        </label>
-
-        <div class="form-actions">
-          <button type="submit" id="submitBtn">新增</button>
-          <button type="button" id="cancelEditBtn" class="secondary-btn hidden">取消編輯</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="card">
-      <h2>匯率設定（自定義）</h2>
-      <label>
-        結算基準幣別
-        <select id="baseCurrency">
-          <option value="HKD">HKD</option>
-          <option value="JPY">JPY</option>
-          <option value="CNY">CNY</option>
-          <option value="TWD">TWD</option>
-          <option value="KRW">KRW</option>
-          <option value="USD">USD</option>
-        </select>
-      </label>
-
-      <div id="ratesContainer" class="rates-grid"></div>
-      <button type="button" id="saveRatesBtn" class="secondary-btn">儲存匯率</button>
-    </section>
-
-    <section class="card">
-      <h2>OCR 入單（免費版）</h2>
-      <label>
-        收據圖片
-        <input type="file" id="ocrReceiptInput" accept="image/*" />
-      </label>
-      <button type="button" id="ocrScanBtn" class="secondary-btn">掃描並分析</button>
-      <p class="hint">本地 Tesseract OCR + 規則抽取（免費）</p>
-    </section>
-
-    <section class="card">
-      <h2>旅程設定 / Members</h2>
-      <div class="member-controls">
-        <div id="memberList" class="member-list"></div>
-        <div class="member-add-row">
-          <input type="text" id="memberNameInput" placeholder="新增成員名稱" />
-          <button type="button" id="addMemberBtn" class="secondary-btn">新增成員</button>
+        <div class="header-right">
+          <div id="today-chip" class="today-chip">載入行程中…</div>
+          <div class="font-controls">
+            <button class="font-btn" id="font-smaller">A−</button>
+            <button class="font-btn" id="font-larger">A+</button>
+            <button class="theme-btn" id="theme-btn" type="button" title="切換主題" data-theme="auto"></button>
+            <button class="refresh-btn" id="refresh-btn" type="button" aria-label="Refresh"><svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0;"><path d="M13 7.5a5.5 5.5 0 1 1-1.17-3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8.5,1.5 11.8,4.1 9.2,6.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></button>
+          </div>
         </div>
       </div>
-    </section>
-
-    <section class="card hidden" id="adminPanel">
-      <h2>管理員 <span class="admin-badge">Creator</span></h2>
-      <p class="hint">以下 email 登入後可自動加入此 trip</p>
-      <div id="allowedEmailList" class="member-list"></div>
-      <div class="member-add-row" style="margin-top:12px">
-        <input type="email" id="allowedEmailInput" placeholder="example@gmail.com" />
-        <button type="button" id="addAllowedEmailBtn" class="secondary-btn">新增</button>
-      </div>
-    </section>
-
-    <section class="card hidden" id="tripControlPanel">
-      <h2>旅程控制</h2>
-      <p class="hint">鎖定後不可再新增、修改或刪除支出，亦不可修改成員及匯率；仍可記錄找數及匯出 Excel。</p>
-      <div class="form-actions">
-        <button type="button" id="lockTripBtn">鎖定此旅程</button>
-        <button type="button" id="unlockTripBtn" class="secondary-btn hidden">解鎖此旅程</button>
-      </div>
-    </section>
-
-
-
-    <section class="card">
-      <h2>資料備份</h2>
-      <p class="hint">JSON Backup 係完整系統備份，包含 trip 設定、支出、找數紀錄、Deleted Items 同 Activity Log。Excel 主要用於對數及報銷。</p>
-      <div class="backup-actions">
-        <button type="button" id="exportJsonBackupBtn" data-action="export-json" class="secondary-btn">匯出 JSON Backup</button>
-        <button type="button" id="exportExcelReportBtn" data-action="export-excel" class="secondary-btn">匯出 Excel Report</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="summary-header-row">
-        <h2>結算 Summary</h2>
-        <button type="button" id="exportExcelBtn" data-action="export-excel" class="secondary-btn export-btn">匯出 Excel</button>
-        <button type="button" id="exportJsonBtn" data-action="export-json" class="secondary-btn export-btn">匯出 JSON Backup</button>
-      </div>
-      <div id="summary"></div>
-    </section>
-
-    <section class="card">
-      <h2>支出列表</h2>
-      <div id="expenseList"></div>
-    </section>
-
-    <section class="card">
-      <h2>Deleted Items</h2>
-      <p class="hint">已刪除支出會保留作 audit trail，不會參與結算。</p>
-      <div id="deletedExpenseList"></div>
-    </section>
-
-    <section class="card">
-      <h2>Activity Log</h2>
-      <p class="hint">記錄新增、修改、刪除、找數、鎖定等主要動作。</p>
-      <div id="activityLogList"></div>
-    </section>
-  </main>
-
-  <div id="ocrPreviewModal" class="modal hidden">
-    <div class="modal-card">
-      <h3>確認收據資料</h3>
-
-      <label>商戶 <input type="text" id="aiMerchantInput" /></label>
-      <label>日期 <input type="date" id="aiDateInput" /></label>
-      <label>
-        幣別
-        <select id="aiCurrencyInput">
-          <option value="HKD">HKD</option>
-          <option value="JPY">JPY</option>
-          <option value="CNY">CNY</option>
-          <option value="TWD">TWD</option>
-          <option value="KRW">KRW</option>
-          <option value="USD">USD</option>
-        </select>
-      </label>
-      <label>總額 <input type="number" id="aiTotalInput" step="0.01" min="0" /></label>
-      <label>信心值 <input type="text" id="aiConfidenceInput" readonly /></label>
-      <label>解析說明 <textarea id="aiReasonInput" rows="3" readonly></textarea></label>
-
-      <div class="form-actions">
-        <button type="button" id="confirmAiFillBtn">確認填入</button>
-        <button type="button" id="cancelAiFillBtn" class="secondary-btn">取消</button>
+      <div class="header-sub-row">
+        <div class="header-sub-text" id="header-sub"></div>
+        <div class="status-square" id="status-square">
+          <div class="status-main" id="status-main"></div>
+          <div class="status-sub" id="status-sub"></div>
+        </div>
       </div>
     </div>
+
+
+<div class="team-bar" id="team-bar" style="display:none;"></div>
+
+<div class="card" id="flight-card" style="display:none;"><div id="flight-content"></div></div>
+
+<div class="card" id="weather-card" style="display:none;">
+  <div class="weather-header">
+    <div class="weather-title" id="weather-title">目的地天氣（自動更新）</div>
+    <div class="weather-updated" id="weather-updated">載入中…</div>
+  </div>
+  <div class="city-tabs" id="city-tabs" style="display:none;"></div>
+  <div class="weather-today" id="weather-today">正在取得今日天氣…</div>
+  <div class="weather-sun" id="weather-sun"></div>
+  <div class="weather-days" id="weather-days"></div>
+</div>
+
+<div id="itinerary-view">
+  <div class="day-tabs" id="day-tabs"></div>
+  <div id="day-contents"></div>
+</div>
+
+<div id="snacks-view" style="display:none;">
+  <div class="card">
+    <div class="weather-header">
+      <div class="weather-title" id="snacks-title">小食清單</div>
+      <div class="weather-updated" id="snacks-count"></div>
+    </div>
+    <div class="section-sub" id="snacks-subtitle" style="margin-bottom:10px;"></div>
+    <div id="snacks-list"></div>
+  </div>
+</div>
+
+<div id="info-view" style="display:none;">
+  <div id="info-content"></div>
+  <div class="info-hint">以上資料可用於填寫 Visit Japan Web / 電子簽證申請<br>請按實際情況核實所有資料</div>
+</div>
+
+
+<div id="expenses-view" style="display:none;">
+  <div id="expenses-root"></div>
+</div>
+<div class="footer-note" id="footer-note"></div>
+
+
   </div>
 
-  <button type="button" id="quickAddFab" class="quick-add-fab">＋ 快速入數</button>
+  <div class="fab-wrap">
+    <button class="fab" id="fab-toggle" aria-expanded="false">⚙️</button>
+    <div class="fab-menu" id="fab-menu">
+      <button class="fab-item active" id="bt-itinerary">🗓️</button>
+      <button class="fab-item" id="bt-snacks" style="display:none;">🍡</button>
+      <button class="fab-item" id="bt-info" style="display:none;">📋</button>
+      <button class="fab-item" id="bt-expenses" style="display:none;">💰</button>
+    </div>
+  </div>
+</div>
 
-  <script type="module" src="app.js"></script>
-</body>
-</html>
+<div class="modal-backdrop" id="detail-backdrop">
+  <div class="modal">
+    <div class="modal-img-wrapper" id="detail-img-wrapper" style="display:none;">
+      <img id="detail-img" src="" alt="photo">
+      <div class="modal-dots" id="detail-dots" style="display:none;"></div>
+    </div>
+    <div class="modal-title" id="detail-title"></div>
+    <div class="modal-time" id="detail-time"></div>
+    <div class="modal-body" id="detail-body"></div>
+    <div class="modal-actions">
+      <button class="modal-link-btn" id="detail-dianping-btn" style="display:none;">官方網頁</button>
+      <button class="modal-link-btn" id="detail-booking-btn" style="display:none;">查看預訂</button>
+      <button class="modal-link-btn" id="detail-maps-btn" style="display:none;">Google地圖</button>
+      <button class="modal-close-btn" id="detail-close">關閉</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function getTripJsonUrl(){const p=new URLSearchParams(location.search);return p.get("data")||((p.get("trip")||"")&&p.get("trip")+".json")||"trip.json";}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function fmtMMDD(iso){return iso.slice(5).replace("-","/");}
+function dateInTZ(tz){try{return new Intl.DateTimeFormat("en-CA",{timeZone:tz||"UTC",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());}catch(e){return new Date().toISOString().slice(0,10);}}
+function normGallery(v){if(!v)return[];if(Array.isArray(v))return v;return[v];}
+
+// Font / Refresh
+function getCurrentAppView(){
+  try{
+    if(document.body.classList.contains("expenses-view-active")) return "expenses";
+    if(document.getElementById("snacks-view")?.style.display==="block") return "snacks";
+    if(document.getElementById("info-view")?.style.display==="block") return "info";
+  }catch(e){}
+  return "itinerary";
+}
+function rememberCurrentAppView(){
+  try{sessionStorage.setItem("trip_current_view", getCurrentAppView());}catch(e){}
+}
+document.getElementById("refresh-btn").addEventListener("click",()=>{rememberCurrentAppView();location.reload(true);});
+const FMIN=0.85,FMAX=1.30,FSTEP=0.08;
+function applyFont(s){s=clamp(s,FMIN,FMAX);document.documentElement.style.setProperty("--font-scale",s);try{localStorage.setItem("trip_font_scale",s);}catch(e){}return s;}
+let fs=applyFont(parseFloat(localStorage.getItem("trip_font_scale"))||1);
+document.getElementById("font-smaller").addEventListener("click",()=>{fs=applyFont(fs-FSTEP);});
+document.getElementById("font-larger").addEventListener("click",()=>{fs=applyFont(fs+FSTEP);});
+
+// Theme toggle: auto → light → dark → auto
+const THEMES=["auto","light","dark"];
+const THEME_ICONS={
+  "auto": `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 2a5.5 5.5 0 1 0 0 11V2z" fill="currentColor"/><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.4"/></svg>`,
+  "light": `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1v1M7.5 13v1M1 7.5H0M15 7.5h-1M2.93 2.93l-.71-.71M12.78 12.78l-.71-.71M2.93 12.07l-.71.71M12.78 2.22l-.71.71" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7.5" cy="7.5" r="2.8" stroke="currentColor" stroke-width="1.5"/></svg>`,
+  "dark": `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1.5a6 6 0 1 0 6 6 4.5 4.5 0 0 1-6-6z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+};
+let autoSunrise=null,autoSunset=null;
+// Restore sunrise/sunset from last fetch to avoid theme flash on reload
+try{
+  const ss=JSON.parse(localStorage.getItem("trip_sun")||"null");
+  const today=new Date().toISOString().slice(0,10);
+  if(ss&&ss.date===today){autoSunrise=new Date(ss.rise);autoSunset=new Date(ss.set);}
+}catch(e){}
+function applyTheme(t){
+  try{
+    document.documentElement.classList.remove("theme-light","theme-dark");
+    if(t==="dark"){document.documentElement.classList.add("theme-dark");}
+    else if(t==="light"){document.documentElement.classList.add("theme-light");}
+    else{
+      // Auto: use sunrise/sunset if available, else fall back to system preference
+      if(autoSunrise&&autoSunset){
+        const now=new Date();
+        if(now>=autoSunrise&&now<autoSunset){document.documentElement.classList.add("theme-light");}
+        else{document.documentElement.classList.add("theme-dark");}
+      }
+      // else: no class added, CSS media query handles system preference
+    }
+    const btn=document.getElementById("theme-btn");
+    if(btn){btn.setAttribute("data-theme",t);btn.innerHTML=THEME_ICONS[t]||THEME_ICONS["auto"];}
+    localStorage.setItem("trip_theme",t);
+  }catch(e){}
+}
+let currentTheme="auto";
+try{currentTheme=localStorage.getItem("trip_theme")||"auto";}catch(e){}
+applyTheme(currentTheme);
+const themeBtn=document.getElementById("theme-btn");
+if(themeBtn)themeBtn.addEventListener("click",()=>{
+  currentTheme=THEMES[(THEMES.indexOf(currentTheme)+1)%THEMES.length];
+  applyTheme(currentTheme);
+});
+
+// Pull to refresh
+const ss=document.getElementById("scroll-shell"),pi=document.getElementById("pull-indicator");
+let psy=0,pd=0,isp=false;
+ss.addEventListener("touchstart",e=>{if(document.body.classList.contains("expenses-modal-open")){isp=false;return;}if(ss.scrollTop===0){isp=true;psy=e.touches[0].clientY;}},{passive:true});
+const PULL_REFRESH_DISTANCE = 150;
+ss.addEventListener("touchmove",e=>{if(document.body.classList.contains("expenses-modal-open")){isp=false;pi?.classList.remove("show");return;}if(!isp)return;pd=e.touches[0].clientY-psy;if(pd>0&&pi){pi.classList.add("show");pi.textContent=pd>PULL_REFRESH_DISTANCE?"釋放以更新行程":"繼續下拉更新行程";}},{passive:true});
+ss.addEventListener("touchend",()=>{if(document.body.classList.contains("expenses-modal-open")){isp=false;pd=0;pi?.classList.remove("show");return;}if(!isp)return;if(pd>PULL_REFRESH_DISTANCE){rememberCurrentAppView();location.reload(true);}else pi?.classList.remove("show");isp=false;pd=0;},{passive:true});
+
+// Weather
+function wIcon(c){
+  if(typeof c!=="number")return{icon:"☁️",label:"多雲"};
+  if(c===0)return{icon:"☀️",label:"晴朗"};if(c===1)return{icon:"🌤️",label:"大致天晴"};
+  if(c===2)return{icon:"⛅",label:"間有雲"};if(c===3)return{icon:"☁️",label:"多雲"};
+  if([45,48].includes(c))return{icon:"🌫️",label:"有霧"};
+  if([51,53,55,56,57].includes(c))return{icon:"🌦️",label:"毛毛雨"};
+  if([61,63,65,66,67].includes(c))return{icon:"🌧️",label:"有雨"};
+  if([71,73,75,77].includes(c))return{icon:"❄️",label:"下雪"};
+  if([80,81,82].includes(c))return{icon:"🌧️",label:"驟雨"};
+  if([95,96,99].includes(c))return{icon:"⛈️",label:"雷暴"};
+  return{icon:"☁️",label:"多雲"};
+}
+let wCache={};
+function fetchCity(key,cfg,tripDates){
+  if(wCache[key]){renderW(wCache[key],tripDates);return;}
+  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${cfg.latitude}&longitude=${cfg.longitude}&timezone=${encodeURIComponent(cfg.timezone||"UTC")}&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset`)
+    .then(r=>r.json()).then(wd=>{if(!wd.daily){document.getElementById("weather-today").textContent="暫時無法取得天氣資料";return;}wCache[key]=wd;renderW(wd,tripDates);})
+    .catch(()=>{document.getElementById("weather-today").textContent="暫時無法連線到天氣服務";});
+}
+function renderW(wd,tripDates){
+  const{time:dates,temperature_2m_max:maxT,temperature_2m_min:minT,sunrise,sunset,weathercode:codes}=wd.daily;
+  const i0=wIcon(codes[0]);
+  document.getElementById("weather-today").textContent=`今日（${fmtMMDD(dates[0])}）  ${i0.icon} ${i0.label}  高 ${Math.round(maxT[0])}°C  低 ${Math.round(minT[0])}°C`;
+  document.getElementById("weather-sun").textContent=`日出 ${new Date(sunrise[0]).toTimeString().slice(0,5)}  日落 ${new Date(sunset[0]).toTimeString().slice(0,5)}`;
+  const now=new Date();document.getElementById("weather-updated").textContent=`更新 ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  // Store today's sunrise/sunset for auto theme, then re-apply if in auto mode
+  autoSunrise=new Date(sunrise[0]);autoSunset=new Date(sunset[0]);
+  try{localStorage.setItem("trip_sun",JSON.stringify({date:dates[0],rise:sunrise[0],set:sunset[0]}));}catch(e){}
+  if(currentTheme==="auto")applyTheme("auto");
+  const el=document.getElementById("weather-days");el.innerHTML="";
+  dates.forEach((d,i)=>{
+    const lbl=fmtMMDD(d);if(tripDates.length&&!tripDates.includes(lbl))return;
+    const c=document.createElement("div");c.className="weather-day";
+    const inf=wIcon(codes[i]);
+    c.innerHTML=`<div class="weather-day-label">${lbl}</div><div class="weather-cond">${inf.icon} ${inf.label}</div><div class="weather-temp">高 ${Math.round(maxT[i])}°  低 ${Math.round(minT[i])}°</div>`;
+    el.appendChild(c);
+  });
+  if(!el.hasChildNodes()){const x=document.createElement("div");x.style.cssText="font-size:11px;color:#777;";x.textContent="預報暫未覆蓋行程日期，出發前幾日再查看。";el.appendChild(x);}
+}
+function renderWeather(data){
+  const cities=data.meta?.cities,legacy=data.meta?.weather;
+  if(!cities&&!legacy)return;
+  document.getElementById("weather-card").style.display="block";
+  if(legacy?.title)document.getElementById("weather-title").textContent=legacy.title;
+  const tripDates=(data.days||[]).filter(d=>d.isoDate).map(d=>fmtMMDD(d.isoDate));
+  if(!cities&&legacy?.latitude){fetchCity("default",legacy,tripDates);return;}
+  const keys=Object.keys(cities);if(!keys.length)return;
+  const ctEl=document.getElementById("city-tabs");ctEl.style.display="flex";ctEl.innerHTML="";
+  let activeKey=keys[0];
+  function setCityTabActive(activeK){
+    document.querySelectorAll(".city-tab").forEach(b=>{b.className="city-tab";if(b.dataset.cityKey===activeK)b.classList.add(`active-${activeK}`);});
+  }
+  keys.forEach(k=>{
+    const btn=document.createElement("button");btn.className="city-tab"+(k===activeKey?` active-${k}`:"");
+    btn.dataset.cityKey=k;btn.textContent=cities[k].label||k;
+    btn.addEventListener("click",()=>{activeKey=k;setCityTabActive(k);fetchCity(k,cities[k],tripDates);});
+    ctEl.appendChild(btn);
+  });
+  fetchCity(activeKey,cities[activeKey],tripDates);
+}
+
+// Modal
+let curMaps="",curDP="",curBook="",curGal=[],curGalIdx=0,scrollY=0;
+function lockScroll(){scrollY=ss.scrollTop;ss.style.overflowY="hidden";}
+function unlockScroll(){ss.style.overflowY="auto";ss.scrollTop=scrollY;}
+function renderDots(){const el=document.getElementById("detail-dots");el.innerHTML="";curGal.forEach((_,i)=>{const d=document.createElement("div");d.className="modal-dot"+(i===curGalIdx?" active":"");d.addEventListener("click",()=>{curGalIdx=i;updateImg();});el.appendChild(d);});}
+function updateImg(){const img=document.getElementById("detail-img");img.classList.add("fade-out");setTimeout(()=>{img.src=curGal[curGalIdx];renderDots();img.classList.remove("fade-out");img.classList.add("fade-in");setTimeout(()=>img.classList.remove("fade-in"),220);},120);}
+
+function setupClicks(){
+  document.querySelectorAll(".timeline-item.clickable").forEach(item=>{
+    const clone=item.cloneNode(true);item.parentNode?.replaceChild(clone,item);
+    clone.addEventListener("click",()=>{
+      document.getElementById("detail-title").textContent=clone.getAttribute("data-title")||"";
+      document.getElementById("detail-time").textContent=clone.getAttribute("data-time")||"";
+      const lr=clone.getAttribute("data-detail-lines"),body=document.getElementById("detail-body");
+      if(lr){try{body.innerHTML=JSON.parse(lr).map(l=>`<div>${l}</div>`).join("");}catch(e){body.textContent=clone.getAttribute("data-detail")||"";}}
+      else body.textContent=clone.getAttribute("data-detail")||"";
+      curMaps=clone.getAttribute("data-maps")||"";curDP=clone.getAttribute("data-dianping")||"";curBook=clone.getAttribute("data-booking-pdf")||"";
+      const gr=clone.getAttribute("data-gallery");let gal=[];
+      if(gr){try{gal=normGallery(JSON.parse(gr));}catch(e){gal=normGallery(gr);}}
+      const wrap=document.getElementById("detail-img-wrapper"),dots=document.getElementById("detail-dots");
+      if(gal.length){curGal=gal;curGalIdx=0;wrap.style.display="block";dots.style.display="flex";updateImg();}
+      else{curGal=[];wrap.style.display="none";dots.style.display="none";document.getElementById("detail-img").src="";}
+      document.getElementById("detail-maps-btn").style.display=curMaps?"inline-block":"none";
+      document.getElementById("detail-dianping-btn").style.display=curDP?"inline-block":"none";
+      document.getElementById("detail-booking-btn").style.display=curBook?"inline-block":"none";
+      // Team colour border on modal — dynamic, works for any traveller key
+      const modalEl=document.querySelector("#detail-backdrop .modal");
+      const isBooked=clone.getAttribute("data-booked")==="true";
+      if(modalEl)modalEl.classList.toggle("is-booked",isBooked);
+      const whoVal=clone.getAttribute("data-who")||"all";
+      const travCol=window.tripData?.meta?.travellers?.[whoVal]?.color;
+      if(travCol){modalEl.style.borderColor=travCol;modalEl.style.borderWidth="2px";modalEl.style.borderStyle="solid";}
+      else{modalEl.style.borderColor="";modalEl.style.borderWidth="";modalEl.style.borderStyle="";}
+      document.getElementById("detail-backdrop").classList.add("active");lockScroll();
+    });
+  });
+}
+
+// Swipe
+let tx=0,ty=0,ex=0,ey=0;
+const iw=document.getElementById("detail-img-wrapper");
+iw.addEventListener("touchstart",e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY;},{passive:true});
+iw.addEventListener("touchmove",e=>{ex=e.touches[0].clientX;ey=e.touches[0].clientY;},{passive:true});
+iw.addEventListener("touchend",()=>{const dx=ex-tx,dy=ey-ty;if(Math.abs(dx)<40||Math.abs(dx)<=Math.abs(dy)||!curGal.length)return;curGalIdx=dx<0?(curGalIdx+1)%curGal.length:(curGalIdx-1+curGal.length)%curGal.length;updateImg();});
+document.getElementById("detail-img").addEventListener("click",e=>{if(!curGal.length)return;const r=e.target.getBoundingClientRect();curGalIdx=(e.clientX-r.left)<r.width/2?(curGalIdx-1+curGal.length)%curGal.length:(curGalIdx+1)%curGal.length;updateImg();});
+document.getElementById("detail-close").addEventListener("click",()=>{document.getElementById("detail-backdrop").classList.remove("active");unlockScroll();});
+document.getElementById("detail-backdrop").addEventListener("click",e=>{if(e.target===document.getElementById("detail-backdrop")){document.getElementById("detail-backdrop").classList.remove("active");unlockScroll();}});
+document.getElementById("detail-backdrop").addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+document.getElementById("detail-maps-btn").addEventListener("click",()=>{if(curMaps)window.open(curMaps,"_blank");});
+document.getElementById("detail-dianping-btn").addEventListener("click",()=>{if(curDP)window.open(curDP,"_blank");});
+document.getElementById("detail-booking-btn").addEventListener("click",()=>{if(curBook)window.open(curBook,"_blank");});
+
+// Team filter
+let activeTeam="all";
+function applyTeam(team){
+  activeTeam=team;
+  // Update button active states — generic, works for any traveller key
+  document.querySelectorAll(".team-btn").forEach(b=>{
+    b.className="team-btn";
+    b.style.background="";b.style.borderColor="";b.style.color="";b.style.fontWeight="";b.style.border="";
+    if(b.dataset.team===team){
+      if(team==="all"){b.classList.add("active-all");}
+      else{const c=b.dataset.color||"#888";b.style.background=c;b.style.border=`1px solid ${c}`;b.style.color="#fff";b.style.fontWeight="700";}
+    }
+  });
+  // Filter timeline items
+  document.querySelectorAll(".timeline-item[data-who]").forEach(item=>{const who=item.getAttribute("data-who");item.classList.toggle("hidden-item",!(team==="all"||who==="all"||who===team));});
+  // Filter flight rows + fix last visible row border
+  const flightRows=document.querySelectorAll(".flight-team-row[data-team]");
+  let lastVisible=null;
+  flightRows.forEach(row=>{const t=row.getAttribute("data-team");const show=team==="all"||t===team;row.style.display=show?"block":"none";if(show)lastVisible=row;});
+  flightRows.forEach(row=>{row.style.borderBottom="";row.style.marginBottom="";row.style.paddingBottom="";});
+  if(lastVisible){lastVisible.style.borderBottom="none";lastVisible.style.marginBottom="0";lastVisible.style.paddingBottom="0";}
+  // Filter info cards
+  document.querySelectorAll(".info-team-card[data-team]").forEach(card=>{const t=card.getAttribute("data-team");card.style.display=(team==="all"||t===team)?"block":"none";});
+  updateNowIndicator();
+}
+
+// Now indicator
+function updateNowIndicator(){
+  document.querySelectorAll(".now-indicator").forEach(el=>el.remove());
+  const chip=document.getElementById("today-chip");
+  if(!chip?.classList.contains("active"))return;
+  const activeContent=document.querySelector(".day-content.active");
+  if(!activeContent)return;
+  const nowStr=new Date().toLocaleTimeString("en-GB",{timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit"});
+  const items=[...activeContent.querySelectorAll(".timeline-item:not(.hidden-item):not(.snack-item)")];
+  if(!items.length)return;
+  let insertAfter=null;
+  items.forEach(item=>{
+    const t=item.querySelector(".time")?.textContent?.trim()||"";
+    const m=t.match(/^(\d{1,2}):(\d{2})/);
+    if(m){const it=m[1].padStart(2,"0")+":"+m[2];if(it<=nowStr)insertAfter=item;}
+  });
+  const ind=document.createElement("div");ind.className="now-indicator";
+  ind.innerHTML='<span class="now-dot"></span><span class="now-label">現在</span><div class="now-line"></div>';
+  if(insertAfter)insertAfter.after(ind);
+  else items[0].before(ind);
+}
+
+// Today chip
+function updateChip(data){
+  const chip=document.getElementById("today-chip"),sq=document.getElementById("status-square");
+  if(!data.days?.length||!chip)return;
+  const cities=data.meta?.cities;
+  const tz=cities?Object.values(cities)[0]?.timezone:(data.meta?.weather?.timezone||"UTC");
+  const tzLbl=data.meta?.weather?.timezoneLabel||"當地時間";
+  const today=dateInTZ(tz),start=data.meta?.tripStartIso,end=data.meta?.tripEndIso;
+  const idx=data.days.findIndex(d=>d.isoDate===today);
+  function diffD(a,b){return Math.round((new Date(b)-new Date(a))/86400000);}
+  function showSq(m,s){sq.style.display="flex";document.getElementById("status-main").textContent=m;document.getElementById("status-sub").textContent=s;}
+  if(idx>=0){
+    chip.innerHTML=`今日  Day ${idx+1}（${data.days[idx].date}）`;chip.classList.add("active");sq.style.display="none";
+    document.querySelectorAll(".day-tab").forEach(t=>t.classList.remove("active"));
+    document.querySelectorAll(".day-content").forEach(c=>c.classList.remove("active"));
+    document.querySelector(`.day-tab[data-day-index="${idx}"]`)?.classList.add("active");
+    document.querySelector(`.day-content[data-day-index="${idx}"]`)?.classList.add("active");
+    ss.scrollTo({top:0,behavior:"smooth"});
+  } else if(start&&today<start){chip.textContent="尚未出發";chip.classList.remove("active");showSq(`距離出發尚餘 ${diffD(today,start)} 日`,`以${tzLbl}計算`);}
+  else if(end&&today>end){chip.textContent="行程已完成";chip.classList.remove("active");showSq("行程已完成","多謝自己好好玩返轉");}
+  else{chip.textContent="行程日期以外";chip.classList.remove("active");}
+}
+
+// Snacks
+function renderSnacks(data){
+  const listEl=document.getElementById("snacks-list");if(!listEl)return;
+  const snacks=data.snacks;if(!snacks?.items?.length)return;
+  document.getElementById("bt-snacks").style.display="flex";
+  if(snacks.title)document.getElementById("snacks-title").textContent=snacks.title;
+  if(snacks.subtitle)document.getElementById("snacks-subtitle").textContent=snacks.subtitle;
+  document.getElementById("snacks-count").textContent=`共 ${snacks.items.length} 項`;
+  listEl.innerHTML="";
+  snacks.items.forEach(s=>{
+    const el=document.createElement("div");el.className="timeline-item snack-item clickable";
+    el.setAttribute("data-title",s.title||"");el.setAttribute("data-maps",s.maps||"");
+    el.setAttribute("data-time",[s.area||"",s.category||""].filter(Boolean).join("  "));
+    const lines=[];if(s.must)lines.push(`必點  ${s.must}`);if(s.note)lines.push(s.note);if(s.opening)lines.push(`營業  ${s.opening}`);
+    el.setAttribute("data-detail-lines",JSON.stringify(lines.length?lines:["點擊地圖前往"]));
+    if(s.gallery)el.setAttribute("data-gallery",JSON.stringify(s.gallery));
+    const icon=document.createElement("div");icon.className="icon";icon.textContent=s.icon||"🍡";
+    const cw=document.createElement("div");cw.className="content";
+    cw.innerHTML=`<div class="content-title">${s.title||""}</div>${[s.area||"",s.category||""].filter(Boolean).length?`<div class="content-note">${[s.area||"",s.category||""].filter(Boolean).join("  ")}</div>`:""}`;
+    el.append(icon,cw);listEl.appendChild(el);
+  });
+  setupClicks();
+}
+
+// Info View
+function miniCopyBtn(textFn){
+  const btn=document.createElement("button");btn.className="info-mini-copy";btn.textContent="📋";
+  btn.addEventListener("click",e=>{
+    e.stopPropagation();const txt=textFn();
+    const ok=()=>{btn.textContent="✅";btn.classList.add("copied");setTimeout(()=>{btn.textContent="📋";btn.classList.remove("copied");},1800);};
+    if(navigator.clipboard?.writeText){navigator.clipboard.writeText(txt).then(ok).catch(()=>{fallbackCopy(txt,btn);});}else{fallbackCopy(txt,btn);}
+  });
+  return btn;
+}
+function renderInfo(data){
+  const meta=data.meta||{};
+  const infoCard=meta.infoCard;
+  // 📋 button only appears if infoCard is defined in JSON — same logic as snacks
+  if(!infoCard)return;
+  document.getElementById("bt-info").style.display="flex";
+
+  const travellers=meta.travellers||{},cities=meta.cities||{},hotels=meta.hotels||{},flights=meta.flights||[];
+  const container=document.getElementById("info-content");if(!container)return;
+  container.innerHTML="";
+
+  function fmtDate(iso){if(!iso)return"";const[y,m,d]=iso.split("-");return`${y}年${parseInt(m)}月${parseInt(d)}日`;}
+  const cityKeys=Object.keys(cities);
+  function hotelDates(cKey){const c=cities[cKey];if(!c)return{in:"",out:""};return{in:fmtDate(c.startIso),out:fmtDate(c.endIso)};}
+  function hotelObj(val){if(!val)return{name:"",address:""};if(typeof val==="string")return{name:val,address:""};return{name:val.name||"",address:val.address||""};}
+  function addRow(sec,label,val){if(!val)return;const r=document.createElement("div");r.className="info-row";r.innerHTML=`<span class="info-row-label">${label}</span><span class="info-row-value">${val}</span>`;sec.appendChild(r);}
+
+  const teamKeys=Object.keys(travellers);
+  if(!teamKeys.length){container.innerHTML="<div class='info-hint'>沒有旅遊者資料</div>";return;}
+
+  teamKeys.forEach(tk=>{
+    const ti=travellers[tk];
+    const teamColor=ti.color||"#888";
+    const tf=flights.find(f=>f.teamKey===tk)||null;
+    const card=document.createElement("div");
+    card.className="info-team-card";
+    card.setAttribute("data-team",tk);
+    card.style.borderLeftColor=teamColor;
+
+    // Header
+    const hdr=document.createElement("div");hdr.className="info-team-header";
+    const lbl=document.createElement("div");lbl.className="info-team-label";lbl.style.background=teamColor;
+    lbl.textContent=(ti.label||tk)+(ti.members?` ${ti.members}`:"");
+    const copyBtn=document.createElement("button");copyBtn.className="info-copy-btn";copyBtn.innerHTML="📋 複製全部";
+    hdr.append(lbl,copyBtn);card.appendChild(hdr);
+
+    // Overview section — auto-derived dates/cities + custom rows from infoCard.overviewRows
+    const tripSec=document.createElement("div");tripSec.className="info-section";
+    tripSec.innerHTML=`<div class="info-section-title">🗓️ 旅遊概覽</div>`;
+    if(cityKeys.length)addRow(tripSec,"目的地",cityKeys.map(k=>cities[k].label||k).join("、"));
+    addRow(tripSec,"出發日期",fmtDate(meta.tripStartIso));
+    addRow(tripSec,"回程日期",fmtDate(meta.tripEndIso));
+    if(meta.tripStartIso&&meta.tripEndIso){const n=Math.round((new Date(meta.tripEndIso)-new Date(meta.tripStartIso))/86400000);addRow(tripSec,"旅遊天數",`${n+1}日${n}晚`);}
+    (infoCard.overviewRows||[]).forEach(r=>addRow(tripSec,r.label,r.value));
+    card.appendChild(tripSec);
+
+    // Flights section — from meta.flights
+    if(tf){
+      const flSec=document.createElement("div");flSec.className="info-section";
+      flSec.innerHTML=`<div class="info-section-title">✈️ 航班資料</div>`;
+      [[tf.outbound,"去程"],[tf.inbound,"回程"]].forEach(([fl,dir])=>{
+        if(!fl)return;
+        const blk=document.createElement("div");blk.className="info-flight-block";
+        blk.style.borderLeftColor=teamColor;
+        const dirEl=document.createElement("div");dirEl.className="info-flight-dir";dirEl.style.color=teamColor;dirEl.textContent=dir;
+        blk.appendChild(dirEl);
+        addRow(blk,"航班號碼",fl.flight);addRow(blk,"日期",fl.date);addRow(blk,"路線",fl.route);addRow(blk,"時間",fl.time);
+        flSec.appendChild(blk);
+      });
+      card.appendChild(flSec);
+    }
+
+    // Hotels section — from meta.hotels, supports {name, address} or plain string
+    if(Object.keys(hotels).length){
+      const htSec=document.createElement("div");htSec.className="info-section";
+      htSec.innerHTML=`<div class="info-section-title">🏨 住宿安排</div>`;
+      Object.entries(hotels).forEach(([cKey,hRaw])=>{
+        const hd=hotelDates(cKey);const cLabel=cities[cKey]?.label||cKey;const h=hotelObj(hRaw);
+        const hRow=document.createElement("div");hRow.className="info-hotel-row";
+        const cityLbl=document.createElement("div");cityLbl.className="info-hotel-city";cityLbl.textContent=cLabel;hRow.appendChild(cityLbl);
+        const nameRow=document.createElement("div");nameRow.className="info-hotel-name-row";
+        const nameEl=document.createElement("div");nameEl.className="info-hotel-name";nameEl.textContent=h.name;
+        nameRow.append(nameEl,miniCopyBtn(()=>h.name));hRow.appendChild(nameRow);
+        if(h.address){
+          const addrRow=document.createElement("div");addrRow.className="info-hotel-addr-row";
+          const addrEl=document.createElement("div");addrEl.className="info-hotel-addr";addrEl.textContent=h.address;
+          addrRow.append(addrEl,miniCopyBtn(()=>h.address));hRow.appendChild(addrRow);
+        }
+        if(hd.in||hd.out){const d=document.createElement("div");d.className="info-hotel-dates";d.textContent=`${hd.in?"入住 "+hd.in:""}${hd.in&&hd.out?"  →  ":""}${hd.out?"退房 "+hd.out:""}`;hRow.appendChild(d);}
+        htSec.appendChild(hRow);
+      });
+      card.appendChild(htSec);
+    }
+
+    // Copy all — mirrors what's visible on screen
+    copyBtn.addEventListener("click",()=>{
+      const ob=tf?.outbound,ib=tf?.inbound;
+      const cityList=cityKeys.map(k=>cities[k].label||k).join("、");
+      const nights=meta.tripStartIso&&meta.tripEndIso?Math.round((new Date(meta.tripEndIso)-new Date(meta.tripStartIso))/86400000):null;
+      let txt=`【${ti.label||tk}】${meta.titleMain?.replace(/<[^>]*>/g,"")||"行程資料"}\n\n旅遊概覽\n`;
+      if(cityList)txt+=`目的地：${cityList}\n`;
+      if(meta.tripStartIso)txt+=`出發日期：${fmtDate(meta.tripStartIso)}\n`;
+      if(meta.tripEndIso)txt+=`回程日期：${fmtDate(meta.tripEndIso)}\n`;
+      if(nights)txt+=`旅遊天數：${nights+1}日${nights}晚\n`;
+      (infoCard.overviewRows||[]).forEach(r=>{if(r.value)txt+=`${r.label}：${r.value}\n`;});
+      if(ob)txt+=`\n✈️ 去程航班\n航班號碼：${ob.flight||"—"}\n日期：${ob.date||"—"}\n路線：${ob.route||"—"}\n時間：${ob.time||"—"}\n`;
+      if(ib)txt+=`\n✈️ 回程航班\n航班號碼：${ib.flight||"—"}\n日期：${ib.date||"—"}\n路線：${ib.route||"—"}\n時間：${ib.time||"—"}\n`;
+      if(Object.keys(hotels).length){
+        txt+=`\n🏨 住宿安排\n`;
+        Object.entries(hotels).forEach(([cKey,hRaw])=>{
+          const hd=hotelDates(cKey);const cLabel=cities[cKey]?.label||cKey;const h=hotelObj(hRaw);
+          txt+=`【${cLabel}】${h.name}`;
+          if(h.address)txt+=`\n地址：${h.address}`;
+          if(hd.in)txt+=`\n入住：${hd.in}`;if(hd.out)txt+=`  退房：${hd.out}`;txt+="\n";
+        });
+      }
+      txt=txt.trim();
+      if(navigator.clipboard?.writeText){navigator.clipboard.writeText(txt).then(()=>{copyBtn.innerHTML="✅ 已複製";copyBtn.classList.add("copied");setTimeout(()=>{copyBtn.innerHTML="📋 複製全部";copyBtn.classList.remove("copied");},2200);}).catch(()=>{fallbackCopy(txt,copyBtn);});}else{fallbackCopy(txt,copyBtn);}
+    });
+
+    container.appendChild(card);
+  });
+
+  // Hint text from JSON
+  const hintEl=document.querySelector("#info-view .info-hint");
+  if(hintEl&&infoCard.hint)hintEl.innerHTML=infoCard.hint.replace(/\n/g,"<br>");
+}
+function fallbackCopy(txt,btn){
+  const ta=document.createElement("textarea");ta.value=txt;ta.style.cssText="position:fixed;left:-9999px;top:-9999px;opacity:0;";document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand("copy");btn.innerHTML="✅ 已複製";btn.classList.add("copied");setTimeout(()=>{btn.innerHTML="📋 複製";btn.classList.remove("copied");},2200);}catch(e){btn.innerHTML="❌ 請手動複製";}
+  document.body.removeChild(ta);
+}
+
+// Main render
+function render(data){
+  const meta=data.meta||{},travellers=meta.travellers||{},cities=meta.cities||{};
+  if(meta.expenses?.enabled){document.getElementById("bt-expenses").style.display="flex";}
+  if(meta.accentColor)document.documentElement.style.setProperty("--accent-color",meta.accentColor);
+  // Set CSS colour variables for every traveller key dynamically (e.g. --team1-color, --solo-color)
+  Object.entries(travellers).forEach(([tk,ti])=>{if(ti.color)document.documentElement.style.setProperty(`--${tk}-color`,ti.color);});
+
+  // Team bar — fully dynamic from JSON travellers, only shown if 2+ travellers
+  const teamBar=document.getElementById("team-bar");
+  teamBar.innerHTML="";
+  const tKeys=Object.keys(travellers);
+  if(tKeys.length>=2){
+    teamBar.style.display="flex";
+    const allBtn=document.createElement("button");
+    allBtn.className="team-btn active-all";allBtn.dataset.team="all";allBtn.textContent="全部";
+    teamBar.appendChild(allBtn);
+    tKeys.forEach(tk=>{
+      const ti=travellers[tk];
+      const btn=document.createElement("button");
+      btn.className="team-btn";btn.dataset.team=tk;btn.dataset.color=ti.color||"#888";
+      btn.textContent=ti.label||tk;
+      teamBar.appendChild(btn);
+    });
+    teamBar.querySelectorAll(".team-btn").forEach(b=>b.addEventListener("click",()=>applyTeam(b.dataset.team)));
+  }
+
+  document.getElementById("page-title").textContent=meta.titleMain?.replace(/<[^>]*>/g,"")||"行程";
+  if(meta.titleSmall)document.getElementById("header-title-small").textContent=meta.titleSmall;
+  if(meta.titleMain)document.getElementById("header-title-main").innerHTML=meta.titleMain;
+  const subLines=[];if(meta.dateRange)subLines.push("旅程日期  "+meta.dateRange);
+  document.getElementById("header-sub").innerHTML=subLines.join("<br/>");
+  if(meta.footerNote)document.getElementById("footer-note").textContent=meta.footerNote;
+
+  // Flights
+  const fc=document.getElementById("flight-content"),fcard=document.getElementById("flight-card");
+  const flights=meta.flights,lo=meta.outbound,li=meta.inbound;
+  if(flights?.length){
+    fcard.style.display="block";fc.innerHTML="";
+    flights.forEach(f=>{
+      const ti=travellers[f.teamKey];
+      const row=document.createElement("div");row.className="flight-team-row";
+      row.setAttribute("data-team",f.teamKey);
+      if(ti){const lbl=document.createElement("div");lbl.className="flight-team-label";lbl.style.background=ti.color||"#888";lbl.textContent=`${ti.label||f.teamKey}${ti.members?" "+ti.members:""}`;row.appendChild(lbl);}
+      const tr=document.createElement("div");tr.className="trip-row trip-row-with-logo";
+      const oc=document.createElement("div");oc.className="trip-col";oc.innerHTML=`<div class="trip-col-title">去程</div><div class="trip-col-main">${f.outbound?.date||""}  ${f.outbound?.flight||""}</div><div class="trip-col-sub">${f.outbound?.route||""}  ${f.outbound?.time||""}</div>`;
+      const ic2=document.createElement("div");ic2.className="trip-col trip-col-right";ic2.innerHTML=`<div class="trip-col-title">回程</div><div class="trip-col-main">${f.inbound?.date||""}  ${f.inbound?.flight||""}</div><div class="trip-col-sub">${f.inbound?.route||""}  ${f.inbound?.time||""}</div>`;
+      if(f.airlineLogo){const lc=document.createElement("div");lc.className="trip-logo-col";const img=document.createElement("img");img.src=f.airlineLogo;img.className="trip-logo-img";lc.appendChild(img);tr.append(oc,lc,ic2);}else tr.append(oc,ic2);
+      row.appendChild(tr);fc.appendChild(row);
+    });
+  } else if(lo||li){
+    fcard.style.display="block";
+    fc.innerHTML=`<div class="trip-row trip-row-with-logo"><div class="trip-col"><div class="trip-col-title">去程</div><div class="trip-col-main">${lo?.date||""}  ${lo?.flight||""}</div><div class="trip-col-sub">${lo?.route||""}  ${lo?.time||""}</div></div>${meta.airlineLogo?`<div class="trip-logo-col"><img src="${meta.airlineLogo}" class="trip-logo-img"/></div>`:""}<div class="trip-col trip-col-right"><div class="trip-col-title">回程</div><div class="trip-col-main">${li?.date||""}  ${li?.flight||""}</div><div class="trip-col-sub">${li?.route||""}  ${li?.time||""}</div></div></div>`;
+  }
+
+  // Days
+  const tabsEl=document.getElementById("day-tabs"),conEl=document.getElementById("day-contents");
+  tabsEl.innerHTML="";conEl.innerHTML="";
+  if(!data.days?.length)return;
+  const cityKeys=Object.keys(cities);
+
+  data.days.forEach((day,idx)=>{
+    // Find which city/cities this day belongs to
+    // Support explicit "both", single city key, or auto-detect from date ranges
+    let matchedCities, ck;
+    if(day.city==="both"){
+      matchedCities=cityKeys; ck="both";
+    } else if(day.city&&day.city!=="both"){
+      matchedCities=[day.city]; ck=day.city;
+    } else {
+      matchedCities=cityKeys.filter(k=>{const cd=cities[k];return cd.startIso&&cd.endIso&&day.isoDate&&day.isoDate>=cd.startIso&&day.isoDate<=cd.endIso;});
+      ck=matchedCities.length===1?matchedCities[0]:(matchedCities.length>1?"both":null);
+    }
+    const ci=ck&&ck!=="both"?cities[ck]:null;
+
+    const tab=document.createElement("button");
+    tab.className=`day-tab${idx===0?" active":""}${ck?` city-${ck}`:""}`;
+    tab.dataset.dayIndex=String(idx);tab.textContent=day.label||("Day "+(idx+1));
+    tabsEl.appendChild(tab);
+
+    const content=document.createElement("div");content.className="day-content"+(idx===0?" active":"");content.dataset.dayIndex=String(idx);
+    const titleEl=document.createElement("div");titleEl.className="section-title";
+    titleEl.textContent=(day.date?day.date+"  ":"")+(day.title||"");
+    if(ck==="both"){
+      // Show both city badges
+      matchedCities.forEach(k=>{const b=document.createElement("span");b.className=`city-badge city-badge-${k}`;b.textContent=cities[k].label||k;titleEl.appendChild(b);});
+    } else if(ci){
+      const b=document.createElement("span");b.className=`city-badge city-badge-${ck}`;b.textContent=ci.label||ck;titleEl.appendChild(b);
+    }
+    if(day.pass){const b=document.createElement("span");b.classList.add("pass-badge");if(String(day.pass).includes("JR"))b.classList.add("pass-jr");else if(String(day.pass).includes("ICOCA"))b.classList.add("pass-icoca");else if(String(day.pass).includes("地鐵"))b.classList.add("pass-metro");b.textContent=day.pass;titleEl.appendChild(b);}
+    content.appendChild(titleEl);
+    if(day.subtitle){const sub=document.createElement("div");sub.className="section-sub";sub.textContent=day.subtitle;content.appendChild(sub);}
+
+    (day.items||[]).forEach(item=>{
+      const el=document.createElement("div");el.className="timeline-item";
+      if(item.booked)el.classList.add("is-booked");
+      const who=item.who||"all";el.setAttribute("data-who",who);
+      if(who!=="all"&&travellers[who]?.color){el.style.borderLeft=`3px solid ${travellers[who].color}`;}
+      if(item.popup){
+        el.classList.add("clickable");
+        el.setAttribute("data-title",item.title||"");el.setAttribute("data-time",item.time||"");el.setAttribute("data-detail",item.detail||"");
+        el.setAttribute("data-who",who);
+        if(item.detailLines)el.setAttribute("data-detail-lines",JSON.stringify(item.detailLines));
+        if(item.booked)el.setAttribute("data-booked","true");
+        el.setAttribute("data-maps",item.maps||"");
+        const mg=[...normGallery(item.gallery),...normGallery(item.booking?.gallery)];
+        if(mg.length)el.setAttribute("data-gallery",JSON.stringify(mg));
+        if(item.dianping)el.setAttribute("data-dianping",item.dianping);
+        if(item.booking?.pdf)el.setAttribute("data-booking-pdf",item.booking.pdf);
+        else if(item.bookingPdf)el.setAttribute("data-booking-pdf",item.bookingPdf);
+      }
+      const cw=document.createElement("div");cw.className="content";
+      const noteRow=document.createElement("div");noteRow.className="content-note-row";
+      if(item.note){const n=document.createElement("div");n.className="content-note";n.textContent=item.note;noteRow.appendChild(n);}
+      if(item.booked){const b=document.createElement("div");b.className="booked-badge";b.textContent="✓ 已預約";noteRow.appendChild(b);}
+      if(who!=="all"&&travellers[who]){const tag=document.createElement("div");tag.className="who-tag";const tc=travellers[who].color||"#888";tag.style.setProperty("--badge-color",tc);tag.textContent=travellers[who].label||who;noteRow.appendChild(tag);}
+      cw.innerHTML=`<div class="content-title">${item.title||""}</div>`;
+      cw.appendChild(noteRow);
+      const timeEl=document.createElement("div");timeEl.className="time";timeEl.textContent=item.time||"";
+      const iconEl=document.createElement("div");iconEl.className="icon";iconEl.textContent=item.icon||"";
+      el.append(timeEl,iconEl,cw);content.appendChild(el);
+    });
+    conEl.appendChild(content);
+  });
+
+  document.querySelectorAll(".day-tab").forEach(tab=>{
+    tab.addEventListener("click",()=>{
+      document.querySelectorAll(".day-tab").forEach(t=>t.classList.remove("active"));
+      document.querySelectorAll(".day-content").forEach(c=>c.classList.remove("active"));
+      tab.classList.add("active");
+      document.querySelector(`.day-content[data-day-index="${tab.dataset.dayIndex}"]`)?.classList.add("active");
+      updateNowIndicator();
+    });
+  });
+
+  setupClicks();renderSnacks(data);updateChip(data);applyTeam("all");
+  // Refresh now indicator every minute
+  setInterval(updateNowIndicator, 60000);
+}
+
+// FAB
+const ivw=document.getElementById("itinerary-view"),svw=document.getElementById("snacks-view"),infvw=document.getElementById("info-view"),expvw=document.getElementById("expenses-view");
+const bti=document.getElementById("bt-itinerary"),bts=document.getElementById("bt-snacks"),btinfo=document.getElementById("bt-info"),btexp=document.getElementById("bt-expenses");
+const EXPENSES_MODULE_VERSION = "5.2.1";
+let expensesModuleImportPromise = null;
+function showExpensesLoading(message){
+  const root=document.getElementById("expenses-root");
+  if(!root) return;
+  if(!root.innerHTML.trim() || root.dataset.loading === "true"){
+    root.dataset.loading = "true";
+    root.innerHTML=`<div class="card"><div class="weather-title">${message || "支出模組載入中…"}</div><div class="section-sub" style="margin-top:6px;">如停留超過數秒，請檢查 assets/js/expenses-module.js 及 assets/js/firebase-config.js 是否已上載。</div></div>`;
+  }
+}
+function showExpensesLoadError(error){
+  const root=document.getElementById("expenses-root");
+  if(!root) return;
+  console.error("Expenses module load error:", error);
+  root.dataset.loading = "false";
+  root.innerHTML=`<div class="card"><div class="weather-title">支出模組載入失敗</div><div class="section-sub" style="margin-top:6px;">請確認 assets/js/expenses-module.js、assets/js/firebase-config.js 及 assets/css/expenses.css 已正確上載，並留意手機快取。錯誤：${String(error?.message || error || "unknown")}</div></div>`;
+}
+function mountExpensesModuleNow(mod){
+  const initFn = window.initExpensesModule || mod?.initExpensesModule;
+  if(window.tripData?.meta?.expenses?.enabled && typeof initFn === "function"){
+    const root=document.getElementById("expenses-root");
+    if(root) root.dataset.loading = "false";
+    initFn(window.tripData);
+    return true;
+  }
+  return false;
+}
+function initExpensesViewSafe(){
+  if(!window.tripData?.meta?.expenses?.enabled){
+    showExpensesLoading("此行程未啟用支出模組");
+    return;
+  }
+
+  if(mountExpensesModuleNow()) return;
+
+  const root=document.getElementById("expenses-root");
+  let loadingTimer=null;
+  if(root && root.dataset.loading !== "true") {
+    root.dataset.loading = "true";
+    loadingTimer = setTimeout(()=>{
+      if(root.dataset.loading === "true") showExpensesLoading("支出模組載入中…");
+    }, 900);
+  }
+
+  if(!expensesModuleImportPromise){
+    expensesModuleImportPromise = import(`./assets/js/expenses-module.js?v=${EXPENSES_MODULE_VERSION}`);
+  }
+
+  expensesModuleImportPromise
+    .then(mod => {
+      if(loadingTimer) clearTimeout(loadingTimer);
+      if(!mountExpensesModuleNow(mod)){
+        throw new Error("initExpensesModule not found after module import");
+      }
+    })
+    .catch(error => {
+      if(loadingTimer) clearTimeout(loadingTimer);
+      showExpensesLoadError(error);
+    });
+}
+function setView(v){
+  try{sessionStorage.setItem("trip_current_view", v || "itinerary");}catch(e){}
+  bti.classList.remove("active");bts.classList.remove("active");btinfo.classList.remove("active");btexp.classList.remove("active");
+  ivw.style.display="none";svw.style.display="none";infvw.style.display="none";expvw.style.display="none";
+  document.body.classList.toggle("expenses-view-active", v==="expenses");
+  if(v==="snacks"){bts.classList.add("active");svw.style.display="block";}
+  else if(v==="info"){btinfo.classList.add("active");infvw.style.display="block";}
+  else if(v==="expenses"){
+    btexp.classList.add("active");expvw.style.display="block";
+    initExpensesViewSafe();
+  }
+  else{bti.classList.add("active");ivw.style.display="block";}
+  updateNowIndicator();
+}
+bti.addEventListener("click",()=>setView("itinerary"));bts.addEventListener("click",()=>setView("snacks"));btinfo.addEventListener("click",()=>setView("info"));btexp.addEventListener("click",()=>setView("expenses"));
+const ft=document.getElementById("fab-toggle"),fm=document.getElementById("fab-menu");
+ft.addEventListener("click",e=>{e.stopPropagation();fm.classList.toggle("open");});
+document.addEventListener("click",()=>fm.classList.remove("open"),{passive:true});
+
+
+// Load
+fetch(getTripJsonUrl())
+  .then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+  .then(data=>{window.tripData=data;render(data);renderWeather(data);renderInfo(data);try{const saved=sessionStorage.getItem("trip_current_view"); if(["itinerary","snacks","info","expenses"].includes(saved)) setView(saved);}catch(e){}})
+  .catch(()=>{document.getElementById("today-chip").textContent="無法載入行程資料";document.getElementById("header-title-main").textContent="無法載入行程資料";});
+</script>
+
+</body></html>
